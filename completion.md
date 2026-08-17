@@ -3,9 +3,9 @@
 Tracks what's actually built vs. what plan.md describes. Updated as work lands.
 
 **Status: the graph layer is complete and verified end-to-end against a live HydraDB
-graph-node.** The LongMemEval harness is built and tested against a synthetic fixture in
-the real dataset schema, but the benchmark run itself has not been executed — that is the
-one gap that matters most for this track.
+graph-node, and the LongMemEval harness is verified against both real official splits.**
+The benchmark run itself has not been executed — it needs an `ANTHROPIC_API_KEY` and API
+budget, and that is now the single remaining blocker for this track.
 
 ## Verified live against a running graph-node
 

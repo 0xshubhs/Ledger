@@ -36,10 +36,17 @@ On a local graph-node, verified live:
 | Abstention on an unstated predicate | 0 rows, no answer produced |
 | Embedding / vector API calls | **0** |
 
-**LongMemEval accuracy: not yet measured.** The harness is built and wired
-(`src/lib/longmemeval.ts`, `src/lib/evalrunner.ts`, `scripts/run-eval.mjs`) but the run has
-not been executed. The landing page's benchmark row is deliberately blank rather than
-filled with a number we did not produce.
+Graph layer at real benchmark volume (`scripts/scale-check.mjs`): the worst-case
+LongMemEval-S haystack — 66 sessions, 564 turns, ~121K tokens — ingests in **1.4–1.6s at
+~400 messages/sec**. The full 25,112-session run is ~9 minutes of graph writes, so the
+graph is not the bottleneck; the 25,112 extraction calls are.
+
+**LongMemEval accuracy: not yet measured.** The harness is built and verified against both
+official splits (`src/lib/longmemeval.ts`, `src/lib/evalrunner.ts`, `scripts/run-eval.mjs`)
+— 500 instances parsed, zero unparseable timestamps, all six question types and the 30
+abstention instances detected — but the scored run needs an API key and budget and has not
+been executed. The landing page's benchmark row is deliberately blank rather than filled
+with a number we did not produce.
 
 ## Graph model
 
@@ -136,8 +143,20 @@ curl -X POST localhost:3000/api/query -H 'content-type: application/json' -d '{
 
 ## Running LongMemEval
 
-The dataset is not vendored — download it from
-[xiaowu0162/LongMemEval](https://github.com/xiaowu0162/LongMemEval) and point at the JSON:
+The dataset is not vendored. Fetch either official split from HuggingFace:
+
+```bash
+mkdir -p data
+curl -sSL -o data/longmemeval_oracle.json \
+  https://huggingface.co/datasets/xiaowu0162/longmemeval/resolve/main/longmemeval_oracle
+curl -sSL -o data/longmemeval_s.json \
+  https://huggingface.co/datasets/xiaowu0162/longmemeval/resolve/main/longmemeval_s
+```
+
+`oracle` is 15MB and carries only the evidence sessions — use it to shake out the loop
+cheaply. `s` is 266MB with ~50 sessions per question and is the headline benchmark.
+
+Then:
 
 ```bash
 export LONGMEMEVAL_PATH=data/longmemeval_s.json
