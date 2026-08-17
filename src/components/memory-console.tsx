@@ -187,8 +187,9 @@ export function MemoryConsole() {
           ...m,
           ts: session.startedAt + i * 1000,
         }))
-        // Facts are supplied directly so the demo runs without an API key. The
-        // /api/ingest route calls Claude for extraction when they're omitted.
+        // Facts are supplied directly so the demo needs no LLM at all. Omitting
+        // them makes /api/ingest extract via the configured backend instead —
+        // a local Ollama/llama-server model, or Claude. See src/lib/llm.ts.
         const res = await post("/api/ingest", {
           userExternalId: SCENARIO.userExternalId,
           sessionIndex: session.sessionIndex,
