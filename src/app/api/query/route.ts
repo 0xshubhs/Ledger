@@ -1,12 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import {
-  getCurrentFact,
-  getFactHistory,
-  getFactsAboutEntity,
-  getFactProvenance,
-  multiHopFromEntity,
-  type FactRow,
-} from "@/lib/memory"
+import { retrieveFacts, getFactProvenance, multiHopFromEntity } from "@/lib/memory"
 import { planQuery, synthesizeAnswer } from "@/lib/extract"
 
 interface QueryRequestBody {
@@ -45,31 +38,10 @@ export async function POST(req: NextRequest) {
         entities: [],
       }
 
-  // Retrieval is a bounded graph lookup, not a similarity search. If the
-  // (subject, predicate) lookup misses, fall back to the entities named in the
-  // question — that is the multi-hop path, not a reranked guess.
-  let facts: FactRow[] = []
-  let retrievalPath: "current" | "history" | "entity" | "none" = "none"
-
-  if (plan.wantsHistory) {
-    facts = await getFactHistory(body.userExternalId, plan.subject, plan.predicate)
-    if (facts.length > 0) retrievalPath = "history"
-  } else if (plan.predicate) {
-    const current = await getCurrentFact(body.userExternalId, plan.subject, plan.predicate)
-    if (current) {
-      facts = [current]
-      retrievalPath = "current"
-    }
-  }
-
-  if (facts.length === 0 && plan.entities.length > 0) {
-    const perEntity = await Promise.all(
-      plan.entities.map((name) => getFactsAboutEntity(body.userExternalId!, name))
-    )
-    const seen = new Set<number>()
-    facts = perEntity.flat().filter((f) => !seen.has(f.id) && seen.add(f.id))
-    if (facts.length > 0) retrievalPath = "entity"
-  }
+  // Retrieval is a graph lookup, not a similarity search: narrowest tier first,
+  // widening to the user's working set rather than guessing again. See
+  // retrieveFacts in memory.ts for why the last tier exists.
+  const { facts, path: retrievalPath } = await retrieveFacts(body.userExternalId, plan)
 
   const retrieveMs = Date.now() - startedAt
 

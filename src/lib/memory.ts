@@ -285,15 +285,83 @@ export async function getFactHistory(
 }
 
 /** Every current fact for a user — the working set an answer step reasons over. */
-export async function getAllCurrentFacts(userExternalId: string): Promise<FactRow[]> {
+export async function getAllCurrentFacts(
+  userExternalId: string,
+  limit = 200
+): Promise<FactRow[]> {
   const { rows } = await runQuery<FactRow>(
     `MATCH (f:Fact) WHERE f.user_id = $userId AND f.valid_to = $stillValid
      RETURN f.id AS id, f.subject AS subject, f.predicate AS predicate, f.object AS object,
             f.valid_from AS validFrom, f.valid_to AS validTo, f.session_index AS sessionIndex
-     ORDER BY validFrom`,
-    { params: { userId: userId(userExternalId), stillValid: STILL_VALID } }
+     ORDER BY validFrom LIMIT $limit`,
+    { params: { userId: userId(userExternalId), stillValid: STILL_VALID, limit } }
   )
   return rows
+}
+
+export type RetrievalPath = "current" | "history" | "entity" | "working-set" | "none"
+
+export interface RetrievalPlan {
+  subject: string
+  predicate: string
+  wantsHistory: boolean
+  entities: string[]
+}
+
+export interface RetrievalResult {
+  facts: FactRow[]
+  path: RetrievalPath
+}
+
+/**
+ * Resolves a planned question into a fact set, trying the narrowest lookup first.
+ *
+ * The tiers matter, and tier 3 exists because of a measured failure. Tiers 1 and
+ * 2 require two independent model calls — the extractor that chose a predicate
+ * string, and the planner that guesses one — to land on the same arbitrary
+ * snake_case token. On LongMemEval single-session-user that agreement happened
+ * once in sixteen: every other instance had facts in the graph and retrieved
+ * `none`, because the extractor had written `commute_duration` while the planner
+ * asked for `daily_commute_length`. Accuracy was 6% for that reason alone.
+ *
+ * So the last tier stops guessing and hands the answer layer the user's current
+ * working set, letting synthesis do the matching over text it can actually read.
+ * That is a deliberate trade: less "one bounded lookup" purity, far better
+ * recall, and it still cannot invent anything, because
+ *
+ *   - a user with no facts yields zero rows and the caller abstains, and
+ *   - synthesis is separately required to emit NOT_IN_MEMORY when the facts it
+ *     was handed do not answer the question.
+ *
+ * Abstention therefore survives the change; only the "we found nothing because
+ * we guessed the wrong key" failure goes away.
+ */
+export async function retrieveFacts(
+  userExternalId: string,
+  plan: RetrievalPlan,
+  options: { workingSetLimit?: number } = {}
+): Promise<RetrievalResult> {
+  if (plan.wantsHistory && plan.predicate) {
+    const facts = await getFactHistory(userExternalId, plan.subject, plan.predicate)
+    if (facts.length > 0) return { facts, path: "history" }
+  } else if (plan.predicate) {
+    const current = await getCurrentFact(userExternalId, plan.subject, plan.predicate)
+    if (current) return { facts: [current], path: "current" }
+  }
+
+  if (plan.entities.length > 0) {
+    const perEntity = await Promise.all(
+      plan.entities.map((name) => getFactsAboutEntity(userExternalId, name))
+    )
+    const seen = new Set<number>()
+    const facts = perEntity.flat().filter((f) => !seen.has(f.id) && seen.add(f.id))
+    if (facts.length > 0) return { facts, path: "entity" }
+  }
+
+  const workingSet = await getAllCurrentFacts(userExternalId, options.workingSetLimit ?? 200)
+  return workingSet.length > 0
+    ? { facts: workingSet, path: "working-set" }
+    : { facts: [], path: "none" }
 }
 
 /** Current facts attached to one named entity, via the ABOUT edge. */

@@ -235,9 +235,13 @@ for (const instance of pending) {
     await appendFile(args.out, JSON.stringify(result) + "\n")
 
     const mark = result.correct ? "PASS" : "FAIL"
+    // Report what retrieval had, not just what this run wrote: re-running over
+    // an already-populated graph writes nothing and would otherwise print
+    // "0 facts", which reads as an extraction failure rather than a cache hit.
     const detail = result.error
       ? `error: ${result.error}`
-      : `${result.sessionsIngested} sessions, ${result.factsWritten} facts, via ${result.retrievalPath}`
+      : `${result.sessionsIngested} sessions, ${result.factsRetrieved} facts retrieved` +
+        ` (+${result.factsWritten} new, ${result.factsUnchanged} unchanged), via ${result.retrievalPath}`
     console.log(`${label} ${mark} ${((Date.now() - startedAt) / 1000).toFixed(1)}s — ${detail}`)
   } catch (error) {
     console.log(`${label} request failed: ${error.message}`)

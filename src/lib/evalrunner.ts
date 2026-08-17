@@ -1,11 +1,4 @@
-import {
-  ingestSession,
-  getCurrentFact,
-  getFactHistory,
-  getFactsAboutEntity,
-  type FactRow,
-  type IngestMessage,
-} from "./memory"
+import { ingestSession, retrieveFacts, type IngestMessage } from "./memory"
 import { extractFacts, planQuery, synthesizeAnswer } from "./extract"
 import {
   gradeAnswer,
@@ -52,12 +45,15 @@ export async function runInstance(
     retrievalPath: "none",
     sessionsIngested: 0,
     factsWritten: 0,
+    factsUnchanged: 0,
+    factsRetrieved: 0,
     ingestMs: 0,
     queryMs: 0,
   }
 
   const ingestStart = Date.now()
   let factsWritten = 0
+  let factsUnchanged = 0
 
   try {
     const evidenceSessions = new Set(instance.answer_session_ids ?? [])
@@ -103,6 +99,7 @@ export async function runInstance(
           facts,
         })
         factsWritten += result.factsWritten + result.factsSuperseded
+        factsUnchanged += result.factsUnchanged
         if (facts.length > 0 && evidenceSessions.has(session.sessionId)) {
           factSessionIndexes.add(session.index)
         }
@@ -115,33 +112,14 @@ export async function runInstance(
 
     base.sessionsIngested = sessions.length
     base.factsWritten = factsWritten
+    base.factsUnchanged = factsUnchanged
     base.ingestMs = Date.now() - ingestStart
 
     const queryStart = Date.now()
     const plan = await planQuery(instance.question)
 
-    let facts: FactRow[] = []
-    let retrievalPath = "none"
-
-    if (plan.wantsHistory && plan.predicate) {
-      facts = await getFactHistory(userExternalId, plan.subject, plan.predicate)
-      if (facts.length) retrievalPath = "history"
-    } else if (plan.predicate) {
-      const current = await getCurrentFact(userExternalId, plan.subject, plan.predicate)
-      if (current) {
-        facts = [current]
-        retrievalPath = "current"
-      }
-    }
-
-    if (facts.length === 0 && plan.entities.length > 0) {
-      const perEntity = await Promise.all(
-        plan.entities.map((name) => getFactsAboutEntity(userExternalId, name))
-      )
-      const seen = new Set<number>()
-      facts = perEntity.flat().filter((f) => !seen.has(f.id) && seen.add(f.id))
-      if (facts.length) retrievalPath = "entity"
-    }
+    const { facts, path: retrievalPath } = await retrieveFacts(userExternalId, plan)
+    base.factsRetrieved = facts.length
 
     const { answer, abstained } = await synthesizeAnswer(instance.question, facts)
     base.queryMs = Date.now() - queryStart

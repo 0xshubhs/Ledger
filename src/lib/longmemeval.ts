@@ -182,7 +182,12 @@ export interface InstanceResult {
   sessionRecall: boolean | null
   retrievalPath: string
   sessionsIngested: number
+  /** Newly created or superseded this run. Zero on a re-run over the same data. */
   factsWritten: number
+  /** Facts already present and unchanged — so a re-run doesn't read as a failure. */
+  factsUnchanged: number
+  /** What retrieval actually had to work with. This is the number that matters. */
+  factsRetrieved: number
   ingestMs: number
   queryMs: number
   error?: string
