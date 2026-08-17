@@ -121,17 +121,37 @@ const args = parseArgs(process.argv)
  * and only the summary at the end reveals that nothing was actually evaluated.
  */
 async function preflight() {
-  let health
+  let health, body
   try {
-    health = await fetch(`${args.base}/api/health`)
+    health = await fetch(`${args.base}/api/health?llm=1`)
+    body = await health.json()
   } catch {
     console.error(`Cannot reach ${args.base} — is 'npm run dev' running?`)
     console.error(`(override with --base or EVAL_BASE_URL if it's on another port)`)
     process.exit(1)
   }
-  if (!health.ok) {
-    console.error(`${args.base}/api/health says the graph-node is unreachable.`)
-    console.error(`Start a HydraDB node — see README, section "Setup".`)
+
+  if (body?.llm) {
+    const l = body.llm
+    console.log(
+      `llm          ${l.provider} · ${l.model}${l.baseUrl ? ` @ ${l.baseUrl}` : ""}` +
+        (l.judgeModel && l.judgeModel !== l.model ? ` · judge ${l.judgeModel}` : "")
+    )
+  }
+
+  if (body?.healthy === false) {
+    console.error(`\nThe HydraDB graph-node is unreachable.`)
+    console.error(`Start a node — see README, section "Setup".`)
+    process.exit(1)
+  }
+  if (body?.llm?.ok === false) {
+    console.error(`\nLLM backend not answering: ${body.llm.detail}`)
+    if (body.llm.provider === "openai-compatible") {
+      console.error(`\nFor Ollama:  ollama serve  &&  ollama pull ${body.llm.model}`)
+      console.error(`For localAI: python3 serve.py, then set LLM_BASE_URL=http://localhost:8080/v1`)
+    } else {
+      console.error(`\nCheck ANTHROPIC_API_KEY in .env.local.`)
+    }
     process.exit(1)
   }
 
@@ -142,18 +162,15 @@ async function preflight() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ datasetPath: args.dataset, limit: 1, concurrency: 1 }),
   })
-  const body = await probe.json().catch(() => ({}))
+  const probeBody = await probe.json().catch(() => ({}))
   if (!probe.ok) {
-    console.error(`Preflight failed (HTTP ${probe.status}): ${body.error ?? "unknown"}`)
+    console.error(`Preflight failed (HTTP ${probe.status}): ${probeBody.error ?? "unknown"}`)
     process.exit(1)
   }
-  const err = body.results?.[0]?.error
+  const err = probeBody.results?.[0]?.error
   if (err) {
     console.error(`Preflight failed: ${err}`)
-    if (/ANTHROPIC_API_KEY/i.test(err)) {
-      console.error(`\nAdd your key to .env.local, then restart 'npm run dev':`)
-      console.error(`  ANTHROPIC_API_KEY=sk-ant-...`)
-    }
+    console.error(`\nSee .env.example for LLM backend options (local Ollama / localAI, or Claude).`)
     process.exit(1)
   }
   console.log(`preflight    ok (one instance ran end-to-end)\n`)

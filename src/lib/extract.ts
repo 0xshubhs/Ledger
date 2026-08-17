@@ -1,19 +1,5 @@
-import Anthropic from "@anthropic-ai/sdk"
 import type { ExtractedFact, IngestMessage, FactRow } from "./memory"
-
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5"
-
-let cached: Anthropic | null = null
-
-/** Lazily constructed so importing this module doesn't require a key at build time. */
-function client(): Anthropic {
-  if (!cached) {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY environment variable")
-    cached = new Anthropic({ apiKey })
-  }
-  return cached
-}
+import { complete } from "./llm"
 
 const EXTRACTION_SYSTEM = `You extract durable facts from a chat transcript for a long-term memory store.
 
@@ -41,17 +27,11 @@ export async function extractFacts(messages: IngestMessage[]): Promise<Extracted
     .map((m, i) => `[${i}] ${m.role}: ${m.content}`)
     .join("\n")
 
-  const message = await client().messages.create({
-    model: MODEL,
-    max_tokens: 4096,
+  const text = await complete({
     system: EXTRACTION_SYSTEM,
-    messages: [{ role: "user", content: `Transcript:\n${transcript}` }],
+    user: `Transcript:\n${transcript}`,
+    maxTokens: 4096,
   })
-
-  const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
 
   return parseFacts(text, messages.length)
 }
@@ -119,17 +99,7 @@ Return ONLY JSON, no prose, no fences:
 
 /** Plans which graph lookup answers a natural-language question. */
 export async function planQuery(question: string): Promise<QueryPlan> {
-  const message = await client().messages.create({
-    model: MODEL,
-    max_tokens: 512,
-    system: PLAN_SYSTEM,
-    messages: [{ role: "user", content: question }],
-  })
-
-  const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
+  const text = await complete({ system: PLAN_SYSTEM, user: question, maxTokens: 1024 })
 
   const start = text.indexOf("{")
   const end = text.lastIndexOf("}")
@@ -193,18 +163,13 @@ export async function synthesizeAnswer(
     })
     .join("\n")
 
-  const message = await client().messages.create({
-    model: MODEL,
-    max_tokens: 512,
-    system: ANSWER_SYSTEM,
-    messages: [{ role: "user", content: `Facts:\n${rendered}\n\nQuestion: ${question}` }],
-  })
-
-  const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim()
+  const text = (
+    await complete({
+      system: ANSWER_SYSTEM,
+      user: `Facts:\n${rendered}\n\nQuestion: ${question}`,
+      maxTokens: 1024,
+    })
+  ).trim()
 
   if (!text || text.includes("NOT_IN_MEMORY")) {
     return { answer: null, abstained: true }

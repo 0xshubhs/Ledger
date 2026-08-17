@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises"
-import Anthropic from "@anthropic-ai/sdk"
+import { complete, judgeModel } from "./llm"
 
 /**
  * LongMemEval instance shape (xiaowu0162/LongMemEval, ICLR 2025).
@@ -123,17 +123,6 @@ or level of detail is CORRECT as long as it conveys the same fact and does not
 add a contradicting claim. A partially correct answer that omits a specific the
 gold answer requires is INCORRECT.`
 
-let cachedJudge: Anthropic | null = null
-
-function judgeClient(): Anthropic {
-  if (!cachedJudge) {
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY environment variable")
-    cachedJudge = new Anthropic({ apiKey })
-  }
-  return cachedJudge
-}
-
 /**
  * Cheap grader used before spending a judge call: exact or containment match
  * after normalisation. LongMemEval's own metric is LLM-as-judge, so this is
@@ -163,25 +152,21 @@ export async function gradeAnswer(
   if (looksCorrect(answer, gold)) return true
   if (!useJudge) return false
 
-  const message = await judgeClient().messages.create({
-    model: process.env.ANTHROPIC_JUDGE_MODEL ?? "claude-sonnet-5",
-    max_tokens: 16,
-    system: JUDGE_SYSTEM,
-    messages: [
-      {
-        role: "user",
-        content: `Question: ${question}\nGold answer: ${gold}\nSystem answer: ${answer}`,
-      },
-    ],
-  })
+  // maxTokens is generous rather than 16: a local model may emit a reasoning
+  // block before the verdict, and truncating mid-<think> would lose the answer
+  // entirely. stripReasoning in llm.ts removes it before we read the verdict.
+  const text = (
+    await complete({
+      system: JUDGE_SYSTEM,
+      user: `Question: ${question}\nGold answer: ${gold}\nSystem answer: ${answer}`,
+      maxTokens: 1024,
+      model: judgeModel(),
+    })
+  ).toUpperCase()
 
-  const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .toUpperCase()
-
-  return text.includes("CORRECT") && !text.includes("INCORRECT")
+  // Order matters: "INCORRECT" contains "CORRECT", so the negative is checked first.
+  if (text.includes("INCORRECT")) return false
+  return text.includes("CORRECT")
 }
 
 export interface InstanceResult {
