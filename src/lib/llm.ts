@@ -81,8 +81,45 @@ function anthropic(): Anthropic {
 }
 
 interface ChatCompletionResponse {
-  choices?: { message?: { content?: string } }[]
+  choices?: {
+    message?: {
+      content?: string
+      /** Ollama returns a hybrid model's chain-of-thought here, out of `content`. */
+      reasoning?: string
+      reasoning_content?: string
+    }
+    finish_reason?: string
+  }[]
+  usage?: { completion_tokens?: number }
   error?: { message?: string } | string
+}
+
+/**
+ * Reasoning models are actively harmful for this workload and the failure is
+ * silent, so this defaults to off.
+ *
+ * Measured on qwen3.5:4b through Ollama, extracting facts from one session:
+ *
+ *   default (thinking on)     29.2s — 800 completion tokens, ALL of them
+ *                                    reasoning, `content` empty, 0 facts
+ *   reasoning_effort: "none"   0.9s — 34 tokens, 2 facts, correct JSON
+ *
+ * A hybrid model spends its entire token budget deliberating and never reaches
+ * the answer, and because Ollama puts that text in a separate `reasoning` field
+ * the response still looks well-formed — just with empty content. Over 948
+ * sessions that is 8 hours of compute producing an empty graph.
+ *
+ * Note that `think: false` and `chat_template_kwargs: {enable_thinking: false}`
+ * are both silently ignored on Ollama's /v1 endpoint (verified: still 800
+ * reasoning tokens, still empty content). `reasoning_effort` is the one that
+ * works. Set LLM_REASONING_EFFORT to override — "low"/"medium"/"high" if a
+ * model genuinely needs to deliberate, or "" to omit the field entirely for a
+ * server that rejects it.
+ */
+function reasoningEffort(): string | undefined {
+  const configured = process.env.LLM_REASONING_EFFORT
+  if (configured === undefined) return "none"
+  return configured.length > 0 ? configured : undefined
 }
 
 async function completeOpenAICompatible(req: CompletionRequest): Promise<string> {
@@ -104,6 +141,8 @@ async function completeOpenAICompatible(req: CompletionRequest): Promise<string>
   if (req.json) {
     body.response_format = { type: "json_object" }
   }
+  const effort = reasoningEffort()
+  if (effort) body.reasoning_effort = effort
 
   const headers: Record<string, string> = { "Content-Type": "application/json" }
   const apiKey = env("LLM_API_KEY")
@@ -127,7 +166,28 @@ async function completeOpenAICompatible(req: CompletionRequest): Promise<string>
     throw new Error(`${model} at ${url} failed (${res.status}): ${message}`)
   }
 
-  return stripReasoning(parsed.choices?.[0]?.message?.content ?? "")
+  const choice = parsed.choices?.[0]
+  const content = choice?.message?.content ?? ""
+
+  // Empty content with a populated reasoning field means the model deliberated
+  // until it hit max_tokens and never emitted an answer. Silently returning ""
+  // would look like "no facts found" and quietly produce an empty graph over
+  // thousands of sessions, so it's an error with the actual cause named.
+  if (!content.trim()) {
+    const reasoning = choice?.message?.reasoning ?? choice?.message?.reasoning_content ?? ""
+    if (reasoning.trim()) {
+      throw new Error(
+        `${model} spent all ${parsed.usage?.completion_tokens ?? "?"} completion tokens on ` +
+          `reasoning and returned no answer. Set LLM_REASONING_EFFORT=none (the default), ` +
+          `or use a non-reasoning model.`
+      )
+    }
+    if (choice?.finish_reason === "length") {
+      throw new Error(`${model} hit the ${req.maxTokens ?? 2048}-token limit before answering.`)
+    }
+  }
+
+  return stripReasoning(content)
 }
 
 async function completeAnthropic(req: CompletionRequest): Promise<string> {
@@ -158,6 +218,7 @@ export interface ProviderInfo {
   model: string
   judgeModel: string
   baseUrl?: string
+  reasoningEffort?: string
 }
 
 export function describeProvider(): ProviderInfo {
@@ -166,7 +227,9 @@ export function describeProvider(): ProviderInfo {
     provider: p,
     model: defaultModel(),
     judgeModel: judgeModel(),
-    ...(p === "openai-compatible" ? { baseUrl: baseUrl() } : {}),
+    ...(p === "openai-compatible"
+      ? { baseUrl: baseUrl(), reasoningEffort: reasoningEffort() ?? "(omitted)" }
+      : {}),
   }
 }
 

@@ -18,14 +18,20 @@ Rules:
 - Extract only what would matter to recall in a future conversation: preferences,
   decisions, biographical details, ongoing projects, commitments, constraints.
 - Skip small talk, pleasantries, and anything the assistant asserted about itself.
-- sourceMessageIndex must be the index of the message that actually states the fact.
+- sourceMessageIndex must be the index shown as #N on the message that states the fact.
+- Keep predicate under four words. "picked_up_during_trip_to_hobby_store" is too long;
+  "bought" with the detail in object is right.
+- Output a single JSON array. Do NOT prefix lines with turn numbers or emit one
+  object per line.
 - If nothing durable is stated, return [].`
 
 /** Extracts durable subject/predicate/object facts from one session's messages. */
 export async function extractFacts(messages: IngestMessage[]): Promise<ExtractedFact[]> {
-  const transcript = messages
-    .map((m, i) => `[${i}] ${m.role}: ${m.content}`)
-    .join("\n")
+  // Turn indices are marked with #N, not [N]. A local model shown [0] in the
+  // input starts prefixing its output lines with [0] too, which turns the
+  // expected JSON array into unparseable newline-delimited objects. Verified on
+  // qwen3.5:4b, where it was the single largest cause of empty extractions.
+  const transcript = messages.map((m, i) => `#${i} ${m.role}: ${m.content}`).join("\n")
 
   const text = await complete({
     system: EXTRACTION_SYSTEM,
@@ -36,21 +42,20 @@ export async function extractFacts(messages: IngestMessage[]): Promise<Extracted
   return parseFacts(text, messages.length)
 }
 
-/** Defensive parse — a model that wraps its JSON or trails prose shouldn't fail ingest. */
+/**
+ * Pulls a fact list out of whatever the model actually produced.
+ *
+ * Three shapes are accepted, because local models reliably produce all three:
+ *   1. a clean JSON array — the documented contract;
+ *   2. an array wrapped in prose or markdown fences;
+ *   3. newline-delimited objects, optionally prefixed with a turn marker, e.g.
+ *      `[0] {"subject":...}` — smaller models drift into this when the input is
+ *      line-numbered, and a first-bracket-to-last-bracket slice turns it into
+ *      invalid JSON, silently yielding zero facts.
+ */
 export function parseFacts(text: string, messageCount: number): ExtractedFact[] {
-  const start = text.indexOf("[")
-  const end = text.lastIndexOf("]")
-  if (start === -1 || end <= start) return []
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1))
-  } catch {
-    return []
-  }
-  if (!Array.isArray(parsed)) return []
-
-  return parsed.flatMap((raw): ExtractedFact[] => {
+  const candidates = extractObjects(text)
+  return candidates.flatMap((raw): ExtractedFact[] => {
     const f = raw as Partial<ExtractedFact>
     if (
       typeof f?.subject !== "string" ||
@@ -76,6 +81,43 @@ export function parseFacts(text: string, messageCount: number): ExtractedFact[] 
       },
     ]
   })
+}
+
+/** Returns every plausible fact object in the text, whatever the wrapper. */
+function extractObjects(text: string): unknown[] {
+  const cleaned = text.replace(/```(?:json)?/gi, "").trim()
+
+  // Shape 1 and 2: a real JSON array somewhere in the text.
+  const start = cleaned.indexOf("[")
+  const end = cleaned.lastIndexOf("]")
+  if (start !== -1 && end > start) {
+    try {
+      const parsed = JSON.parse(cleaned.slice(start, end + 1))
+      if (Array.isArray(parsed)) return parsed
+    } catch {
+      // Fall through to the line-oriented reader.
+    }
+  }
+
+  // Shape 3: one object per line, with any leading turn marker stripped. Also
+  // covers a truncated array, where the last object is incomplete and the
+  // whole-array parse above could never have succeeded.
+  // Any leading marker is dropped by slicing from the line's first "{" rather
+  // than matching a specific prefix pattern. Models echo whatever numbering the
+  // input used — "[0]", "#0", "0.", "- " — and chasing each variant is a losing
+  // game when the object itself is unambiguous.
+  const objects: unknown[] = []
+  for (const line of cleaned.split("\n")) {
+    const open = line.indexOf("{")
+    const close = line.lastIndexOf("}")
+    if (open === -1 || close <= open) continue
+    try {
+      objects.push(JSON.parse(line.slice(open, close + 1)))
+    } catch {
+      // A single malformed line shouldn't discard the rest of the session.
+    }
+  }
+  return objects
 }
 
 export interface QueryPlan {

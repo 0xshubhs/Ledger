@@ -3,9 +3,10 @@
 Tracks what's actually built vs. what plan.md describes. Updated as work lands.
 
 **Status: the graph layer is complete and verified end-to-end against a live HydraDB
-graph-node, and the LongMemEval harness is verified against both real official splits.**
-The benchmark run itself has not been executed — it needs an `ANTHROPIC_API_KEY` and API
-budget, and that is now the single remaining blocker for this track.
+graph-node, the LongMemEval harness is verified against both real official splits, and the
+LLM runs locally on a 6GB laptop GPU — no API key required.** The scored benchmark run has
+not been executed yet, but it is now a matter of wall-clock (~1.6h for the oracle split)
+rather than a blocker.
 
 ## Verified live against a running graph-node
 
@@ -37,7 +38,19 @@ All of the following was executed, not inferred from documentation:
   describes — ingests in **1.4–1.6s at ~400 messages/sec**. Extrapolated, the full
   25,112-session run is roughly **9 minutes of graph writes**. The graph is not the
   bottleneck; the 25,112 extraction calls are.
-- `npx tsc --noEmit` clean · `npm run build` clean.
+- **Local inference on a 6GB RTX 4050** via Ollama (`qwen3.5-16k:4b`, a 16K-context
+  variant of qwen3.5:4b), fully GPU-resident at 4554/6141 MiB. Extraction measured on
+  real dataset sessions with `scripts/bench-llm.mjs`:
+
+  | config | mean/session | facts (8 sessions) | empty | oracle run |
+  |---|---|---|---|---|
+  | thinking on, 4K ctx | 30.7s | **0** | 8/8 | 8.1 h |
+  | `reasoning_effort=none`, 4K ctx | 3.8s | 11 | 4/8 | 60 min |
+  | + 16K context | 6.4s | 16 | 4/8 | 1.7 h |
+  | + prompt/parser fixes | 6.2s | **24** | 2/8 | **1.6 h** |
+
+  The full S split projects to ~43h, so the oracle split is the realistic local target.
+- `npx tsc --noEmit` clean · `npm run lint` clean · `npm run build` clean.
 
 ## Done
 
@@ -52,8 +65,14 @@ All of the following was executed, not inferred from documentation:
 - [x] `src/lib/graphwrite.ts` — the two `UNWIND` batch forms HydraDB actually executes
 - [x] `src/lib/memory.ts` — session/message/fact/entity writes, supersede semantics,
       current-truth and history reads, entity fan-out, provenance lookup, multi-hop, counts
-- [x] `src/lib/extract.ts` — Claude fact extraction with per-turn source indices, query
-      planning, and answer synthesis with enforced abstention
+- [x] `src/lib/llm.ts` — pluggable LLM backend: Claude, or any OpenAI-compatible server
+      (Ollama at `:11434/v1`, llama.cpp/localAI at `:8080/v1`). Auto-detects: local unless
+      `ANTHROPIC_API_KEY` is set. Defaults `reasoning_effort` to `none`, strips reasoning
+      traces, and raises a named error when a model spends its whole budget thinking
+- [x] `src/lib/extract.ts` — fact extraction with per-turn source indices, query planning,
+      and answer synthesis with enforced abstention
+- [x] `scripts/bench-llm.mjs` — measures seconds-per-session on real dataset input and
+      projects wall-clock for both splits
 - [x] `src/lib/longmemeval.ts` — dataset schema, filtering (type / abstention / id /
       offset), string + LLM-judge grading, summary stats including session-level recall
 - [x] `src/lib/evalrunner.ts` — drives one instance end-to-end, namespaced per
@@ -71,6 +90,26 @@ All of the following was executed, not inferred from documentation:
       directly contradicted plan.md's deliberate no-vectors thesis. Replaced with the real
       differentiators and measured numbers; the benchmark row is left blank.
 
+### Bugs found by running a local model
+
+- **Hybrid reasoning models silently produce nothing.** qwen3.5:4b spent all 800 completion
+  tokens on chain-of-thought and returned empty `content` — and because Ollama puts that
+  text in a separate `reasoning` field, the response still looked well-formed. 8/8 sessions
+  extracted zero facts while burning 30s each. `reasoning_effort: "none"` fixes it (0.9s,
+  correct JSON). Note `think: false` and `chat_template_kwargs.enable_thinking` are both
+  silently *ignored* on Ollama's `/v1` endpoint. The client now raises an explicit error on
+  the empty-content-with-reasoning case rather than returning "" as if no facts existed.
+- **The prompt taught the model to break its own output format.** Transcripts were numbered
+  `[0] user: ...`, and the model echoed that into its answer as `[0] {"subject":...}` —
+  one object per line instead of a JSON array. A first-bracket-to-last-bracket slice made
+  that unparseable, so those sessions silently yielded nothing. Markers are now `#N`, and
+  the parser accepts arrays, fenced arrays, prose-wrapped arrays, truncated arrays, and
+  line-delimited objects with any leading marker.
+- **The judge scored wrong answers as correct.** `"INCORRECT".includes("CORRECT")` is true,
+  so any verdict with extra words passed. Only surfaced with chattier local models.
+- **The judge was capped at 16 output tokens**, which truncates a local model mid-reasoning
+  and loses the verdict entirely.
+
 ### Bugs found and fixed along the way
 
 - **Fact identity collision.** Keying a fact on `(subject, predicate, valid_from)` meant two
@@ -86,14 +125,20 @@ All of the following was executed, not inferred from documentation:
 
 ## Not done yet
 
-- [ ] **LongMemEval has not been run.** This is the top priority and the only remaining
-      blocker. Everything else is ready: both splits are downloaded to `data/`, the harness
-      parses them, and the graph is measured fast enough. What it needs is an
-      `ANTHROPIC_API_KEY` in `.env.local` and API budget — the full S split is 25,112
-      extraction calls plus 500 planning, 500 synthesis and up to 500 judge calls.
-      Recommended order: `--limit 5` to sanity-check the loop, then
-      `--types knowledge-update` (78 instances, the split this data model should win
-      hardest), then the full run.
+- [ ] **LongMemEval has not been run.** Still the top priority, but no longer blocked — it
+      runs locally now. The oracle split is ~1.6h of extraction; the S split is ~43h.
+      Recommended order: `--limit 5` to sanity-check the loop, then the full oracle split,
+      then `--types knowledge-update` on S (78 instances, where this data model should win
+      hardest). Set `LLM_JUDGE_MODEL` to something other than the model under test first —
+      right now the system would be marking its own homework.
+- [ ] **Extraction reliability is ~75%.** 2 of 8 sampled sessions still yield no facts.
+      Some of that is legitimate (LongMemEval haystacks are deliberately padded with
+      sessions containing nothing durable), but the largest sampled session is a genuine
+      miss and has not been diagnosed. Worth an hour of prompt work before a full run,
+      since extraction quality caps the achievable accuracy.
+- [ ] **A 4B model is a real quality ceiling.** `qwen3.5:9b` (6.6GB) would spill past 6GB
+      VRAM but is worth testing on a small slice; the 27B models named as candidates need
+      ~17GB and would run at CPU-bound speeds, which 25,112 calls cannot absorb.
 - [ ] **Supersede is not atomic.** A read followed by three durable writes. Concurrent
       writers on the same `(subject, predicate)` could interleave, and HydraDB exposes no
       guarded-merge primitive to prevent it. The eval runner writes sessions sequentially

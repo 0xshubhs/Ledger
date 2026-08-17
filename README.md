@@ -88,9 +88,9 @@ open-ended interval is a sentinel rather than an absent property.
 
 ## Setup
 
-Requires Node 20+ and Docker. An `ANTHROPIC_API_KEY` is needed for fact extraction, query
-planning, answer synthesis, and eval grading — but **not** for the demo console, which
-supplies facts directly so the graph layer can be exercised without a key.
+Requires Node 20+ and Docker. The LLM backend is pluggable and **runs locally with no API
+key** by default — see "Local inference" below. The demo console needs no LLM at all; it
+supplies facts directly so the graph layer can be exercised on its own.
 
 ```bash
 # 1. Start a HydraDB graph-node
@@ -111,11 +111,48 @@ docker run --rm --name hydradb --user "$(id -u):$(id -g)" \
 # RUST_MIN_STACK is mandatory. Without it the node serves /readyz and then
 # aborts with a stack overflow on the first query.
 
-# 2. In another shell
-cp .env.example .env.local     # fill in ANTHROPIC_API_KEY for the LLM paths
+# 2. Start a local model (no API key needed)
+ollama pull qwen3.5:4b
+printf 'FROM qwen3.5:4b\nPARAMETER num_ctx 16384\n' > /tmp/M
+ollama create qwen3.5-16k:4b -f /tmp/M     # 4K default truncates long sessions
+ollama serve
+
+# 3. In another shell
+cp .env.example .env.local     # already points at Ollama; no key required
 npm install
 npm run dev
 ```
+
+### Local inference
+
+`src/lib/llm.ts` speaks two protocols, chosen by `LLM_PROVIDER` or inferred (Claude if
+`ANTHROPIC_API_KEY` is set, otherwise local):
+
+```bash
+LLM_BASE_URL=http://localhost:11434/v1   # Ollama
+LLM_BASE_URL=http://localhost:8080/v1    # llama.cpp / llama-server, incl. localAI
+```
+
+Two settings matter more than the model choice, both measured on a 6GB RTX 4050:
+
+| config | mean/session | facts from 8 sessions |
+|---|---|---|
+| defaults (thinking on, 4K ctx) | 30.7s | **0** |
+| `reasoning_effort=none` | 3.8s | 11 |
+| + 16K context | 6.4s | 16 |
+| + prompt & parser fixes | 6.2s | **24** |
+
+A hybrid reasoning model spends its entire token budget deliberating and returns empty
+content, so `LLM_REASONING_EFFORT` defaults to `none`. `think: false` and
+`chat_template_kwargs.enable_thinking` are silently ignored on Ollama's `/v1` endpoint —
+`reasoning_effort` is the one that works. Measure your own hardware with:
+
+```bash
+node scripts/bench-llm.mjs data/longmemeval_oracle.json
+```
+
+At 6.2s/session the oracle split (948 sessions) is ~1.6h and the S split (25,112) is ~43h,
+so oracle is the realistic local target.
 
 Open <http://localhost:3000>, scroll to **Live memory console**, then click
 `ingest 3 sessions` and run the four probes. The third session contradicts the first; the
