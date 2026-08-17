@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react"
 
+// The retrieval paths the query planner can actually take, with the Cypher
+// shape each one resolves to. Verified against a live graph-node.
 const CHANNELS = [
-  { name: "SEMANTIC", status: "ONLINE", latency: "18ms" },
-  { name: "TEMPORAL", status: "ONLINE", latency: "22ms" },
-  { name: "EMOTIONAL", status: "ONLINE", latency: "31ms" },
-  { name: "KEYWORD", status: "ONLINE", latency: "9ms" },
-  { name: "GRAPH", status: "ONLINE", latency: "42ms" },
+  { name: "CURRENT_TRUTH", status: "WIRED", latency: "valid_to = 0" },
+  { name: "FACT_HISTORY", status: "WIRED", latency: "ORDER BY valid_from" },
+  { name: "ENTITY_FANOUT", status: "WIRED", latency: "(:Fact)-[:ABOUT]->" },
+  { name: "MULTI_HOP", status: "WIRED", latency: "algo.SSpaths" },
+  { name: "ABSTENTION", status: "WIRED", latency: "0 rows ⇒ stop" },
 ]
 
 export function StatusCard() {
@@ -42,11 +44,11 @@ export function StatusCard() {
         ))}
         <div className="mt-auto pt-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Recall Accuracy</span>
-            <span className="text-[9px] font-mono text-foreground">90.79%</span>
+            <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Retrieval Paths</span>
+            <span className="text-[9px] font-mono text-foreground">4 / 4 wired</span>
           </div>
           <div className="h-2 w-full border border-foreground">
-            <div className="h-full bg-foreground" style={{ width: "90.79%" }} />
+            <div className="h-full bg-foreground" style={{ width: "100%" }} />
           </div>
         </div>
       </div>

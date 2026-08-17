@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# eval datasets and run outputs (large, not vendored)
+/data
+/results

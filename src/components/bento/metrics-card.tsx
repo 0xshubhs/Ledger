@@ -53,8 +53,8 @@ export function MetricsCard() {
         <span className="inline-block h-2 w-2 bg-[#0001FC]" />
       </div>
       <div className="flex-1 flex flex-col justify-center gap-6 p-6">
-        <ScrambleNumber target="90.79%" label="LongMemEval Score" delay={500} />
-        <ScrambleNumber target="42ms" label="Avg Retrieval" delay={800} />
+        <ScrambleNumber target="3ms" label="Current-Truth Read" delay={500} />
+        <ScrambleNumber target="48ms" label="Supersede Write" delay={800} />
         <ScrambleNumber target="70%" label="Compression Rate" delay={1100} />
         <ScrambleNumber target="5" label="Retrieval Channels" delay={1400} />
       </div>

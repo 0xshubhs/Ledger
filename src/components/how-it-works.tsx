@@ -14,19 +14,19 @@ const STEPS = [
   {
     num: "02",
     title: "Write Memories",
-    desc: "On every agent interaction, track3 extracts entities, detects emotion, assigns temporal markers, and writes structured nodes + edges to the graph.",
+    desc: "Claude extracts (subject, predicate, object) facts per turn. Each is written as a Fact vertex with a validity interval, plus ASSERTS and ABOUT edges — via UNWIND batches, the only write form HydraDB executes.",
     blue: false,
   },
   {
     num: "03",
     title: "Retrieve Intelligently",
-    desc: "On recall, all 5 channels fire in parallel — semantic, graph, temporal, emotional, keyword — fused via RRF. Best result, always, under 200ms.",
+    desc: "A question is planned into a bounded lookup: current truth, full history, or an algo.SSpaths traversal from a named entity. No embeddings, no reranking — if it returns nothing, the answer is \"not in memory\".",
     blue: true,
   },
   {
     num: "04",
-    title: "Adapt & Improve",
-    desc: "Thompson Sampling tracks which retrieval strategy wins per agent. Weights update automatically. Your agent gets smarter with every interaction.",
+    title: "Update Without Forgetting",
+    desc: "A contradicting statement closes the old fact rather than replacing it. \"What do you believe now\" and \"what did you believe in March\" become the same query with a different time filter.",
     blue: false,
   },
 ]

@@ -25,13 +25,13 @@ const FEATURES = [
   },
   {
     icon: GitBranch,
-    title: "Git-Style Versioning",
-    desc: "Every memory write is versioned. Roll back, diff, and audit your agent's entire knowledge history.",
+    title: "Temporal Versioning",
+    desc: "A revised fact never overwrites the old one. The old fact is closed with valid_to and linked by SUPERSEDES, so history stays queryable.",
   },
   {
     icon: Zap,
-    title: "5-Channel Retrieval",
-    desc: "Semantic, graph, temporal, emotional, and keyword channels fused via Reciprocal Rank Fusion.",
+    title: "Honest Abstention",
+    desc: "A Cypher MATCH that returns zero rows ends the request. There is no nearest neighbour to fall back on, so \"not in memory\" is reachable.",
   },
   {
     icon: Shield,
@@ -45,8 +45,8 @@ const FEATURES = [
   },
   {
     icon: Layers,
-    title: "Adaptive Strategy",
-    desc: "Thompson Sampling auto-tunes retrieval weights based on what actually works for your agent.",
+    title: "Auditable Answers",
+    desc: "Every fact keeps an ASSERTS edge to the exact turn that stated it, so an answer can quote its own source instead of asserting it.",
   },
 ]
 
@@ -82,7 +82,7 @@ export function FeatureGrid() {
         </h2>
         <p className="text-sm font-mono text-muted-foreground leading-relaxed">
           Not a wrapper around vector search. A full memory operating system with
-          graph storage, emotional awareness, and adaptive retrieval baked in.
+          graph storage, temporal versioning, and honest abstention baked in.
         </p>
       </motion.div>
 

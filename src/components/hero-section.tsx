@@ -9,13 +9,15 @@ const ease = [0.22, 1, 0.36, 1] as const
 
 type Particle = { id: number; x: number; y: number; size: number }
 
+// Measured against a local graph-node. The LongMemEval column stays empty
+// until scripts/run-eval.mjs has actually produced a score — see README.
 const STATS = [
-  { value: "90.79%", label: "LongMemEval", sub: "Best in class" },
-  { value: "<200ms", label: "Retrieval", sub: "p99 latency" },
-  { value: "5",      label: "Channels",   sub: "Fused via RRF" },
-  { value: "70%",    label: "Compression", sub: "via consolidation" },
-  { value: "10M+",   label: "Memories",   sub: "Stored per agent" },
-  { value: "99.9%",  label: "Uptime",     sub: "SLA guaranteed" },
+  { value: "3ms",   label: "Current truth", sub: "Fact lookup, measured" },
+  { value: "0",     label: "Vector calls",  sub: "No embeddings, by design" },
+  { value: "100%",  label: "Abstention",    sub: "Zero rows ⇒ no answer" },
+  { value: "∞",     label: "Fact history",  sub: "Nothing overwritten" },
+  { value: "4",     label: "Hop bound",     sub: "algo.SSpaths traversal" },
+  { value: "6",     label: "Question types", sub: "LongMemEval harness wired" },
 ]
 
 const TECH_TAGS = [
@@ -124,7 +126,7 @@ export function HeroSection() {
           transition={{ duration: 0.5, delay: 0.3, ease }}
           className="text-sm lg:text-base text-white max-w-2xl mb-4 leading-relaxed font-mono tracking-wide"
         >
-          Graph-native memory for AI agents. Persistent context, emotional awareness,
+          Graph-native memory for AI agents. Persistent context, temporal versioning,
           adaptive retrieval, and temporal versioning — all in one API call.
           Your agents never start from zero.
         </motion.p>

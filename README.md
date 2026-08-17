@@ -1,52 +1,192 @@
-# Track 3 — Memory and Context Retrieval
+# track3 — Agent Memory on a Temporal Fact Graph
 
-**Hack Hydra** · Aug 12-20, 2026 · Built on [HydraDB](https://github.com/hydra-db/hydradb)
+**Hack Hydra** · Track 3, Memory and Context Retrieval · Aug 12–20, 2026 · Built on
+[HydraDB](https://github.com/hydra-db/hydradb)
 
-## Problem statement
+An agent memory layer for cross-session continuity, built as a **fact graph with time and
+provenance edges** rather than a vector store. No embedding model is used anywhere in this
+project — that is the submission's central claim, not an omission.
 
-Make your own mem0, and ace the benchmarks.
+## The bet
 
-Build an agent memory layer for cross session continuity. It has to process chat histories spanning 30 to 40 sessions and 115,000 tokens per question.
+mem0-style memory retrieves by vector similarity, which is a weak proxy for two questions
+that matter most over 30–40 sessions:
 
-The system has to synthesize facts across sessions, keep chronological order and track information that was later overwritten. Long context models drop 30 to 60% in accuracy here, and they mostly fail at abstention: knowing when the answer simply is not in the history and saying so instead of inventing one.
+- **Is this fact still true?** A revision and the thing it revises are *similar*, so
+  similarity cannot separate them. Here a revision closes the old fact (`valid_to`) and
+  links `SUPERSEDES` to it. Current truth and full history become the same query with a
+  different time filter, and nothing is ever overwritten or deleted.
+- **Is the answer in memory at all?** Nearest-neighbour search always returns something, so
+  "not in memory" is unreachable — which is why long-context models mostly fail abstention.
+  Here retrieval is a Cypher `MATCH`. Zero rows ends the request, and the answer layer is
+  additionally required to emit a sentinel rather than guess.
 
-## Datasets
+Every answer also carries an `ASSERTS` edge back to the exact conversation turn that stated
+the fact, so it can quote its own source.
 
-- [LongMemEval](https://github.com/xiaowu0162/LongMemEval)
-- LongMemEval V2
-- BEAM
+## Measured
 
-## What a strong submission needs
+On a local graph-node, verified live:
 
-- A functional product or demo
-- Real ingestion and retrieval workflows
-- A clear use case
-- A thoughtful technical implementation
-- HydraDB doing real work (graph-native data model, not just sitting in the README)
+| | |
+|---|---|
+| Current-truth fact lookup | **2–3ms** |
+| Full-history lookup (2 versions) | **2ms** |
+| Knowledge-update write (close old + link `SUPERSEDES`) | **48ms** |
+| Abstention on an unstated predicate | 0 rows, no answer produced |
+| Embedding / vector API calls | **0** |
 
-## Rules recap
+**LongMemEval accuracy: not yet measured.** The harness is built and wired
+(`src/lib/longmemeval.ts`, `src/lib/evalrunner.ts`, `scripts/run-eval.mjs`) but the run has
+not been executed. The landing page's benchmark row is deliberately blank rather than
+filled with a number we did not produce.
 
-- Work starts on or after **August 12, 2026** — fresh repo, no prior commits.
-- HydraDB must be genuinely used — be ready to explain what the project would lose without it.
-- Submission requires: public GitHub repo (with OSS license, README, setup instructions, HydraDB usage explanation, third-party attribution), a demo video (≤ 3 min), and the submission form.
-- Deadline: **August 20, 2026, 11:59 PM PT**.
+## Graph model
 
-Full event details: see `../hack-hydra.md`.
+```
+(:User {id, external_id})
+(:Session {id, session_index, started_at, ended_at})
+(:Message {id, role, content, ts, session_index, message_index})
+(:Entity {id, name, normalized})
+(:Fact {id, subject, predicate, object, valid_from, valid_to, session_index})
 
-## Stack
+(:User)-[:HAS_SESSION]->(:Session)
+(:Session)-[:CONTAINS]->(:Message)
+(:Message)-[:ASSERTS]->(:Fact)          // provenance: which turn said it
+(:Fact)-[:ABOUT]->(:Entity)
+(:Fact)-[:SUPERSEDES]->(:Fact)          // overwritten knowledge, kept not deleted
+```
 
-Next.js (App Router, TypeScript, Tailwind) + HydraDB.
+`valid_to = 0` means "still true". HydraDB's `WHERE` rejects `IS NULL` outright, so an
+open-ended interval is a sentinel rather than an absent property.
 
----
+### Retrieval shapes
 
-## Getting Started
+- **Current truth** — `MATCH (f:Fact) WHERE ... AND f.valid_to = 0 ... ORDER BY validFrom DESC LIMIT 1`
+- **Full history** — same pattern without the `valid_to` filter, ordered by `valid_from`
+- **Entity fan-out** — `MATCH (f:Fact)-[:ABOUT]->(e:Entity) WHERE e.id = $id AND f.valid_to = 0`
+- **Multi-hop** — `algo.SSpaths` from an entity across `ABOUT`, `SUPERSEDES`, `ASSERTS`,
+  `CONTAINS`; verified walking `Entity → Fact → SUPERSEDES → Fact → Message → Session`
+- **Abstention** — any of the above returning zero rows stops the request
 
-First, run the development server:
+### What this loses without HydraDB
+
+- **Guarded temporal writes.** A supersede is "close the old row, create the new one, link
+  them" — three statements, each durable on return. On a vector store this is a delete plus
+  an insert, and the prior belief is gone.
+- **`algo.SSpaths`** gives bounded multi-hop traversal as one call. Client-side it becomes a
+  round trip per frontier node per hop.
+- **Bookmarks** let an ingest hand its durable sequence to the read that follows, so an
+  agent's next turn is read-your-writes correct without `strong` consistency everywhere.
+
+## Setup
+
+Requires Node 20+ and Docker. An `ANTHROPIC_API_KEY` is needed for fact extraction, query
+planning, answer synthesis, and eval grading — but **not** for the demo console, which
+supplies facts directly so the graph layer can be exercised without a key.
 
 ```bash
+# 1. Start a HydraDB graph-node
+mkdir -p .hydradb/store .hydradb/cache
+printf '%s\n' 'local-development-token-32-bytes' > .hydradb/auth-token
+docker run --rm --name hydradb --user "$(id -u):$(id -g)" \
+  -p 7687:7687 -p 8443:8443 -p 9090:9090 -v "$PWD/.hydradb:/data" \
+  -e CLOUD_PROVIDER=local -e LOCAL_PATH=/data/store \
+  -e GRAPH_NAMESPACE=default -e GRAPH_ID=default \
+  -e GRAPH_CELL_ID=cell-0 -e GRAPH_CELLS=cell-0 -e GRAPH_NODE_ID=node-0 \
+  -e GRAPH_BOLT_NODE_ADDRESSES=node-0=127.0.0.1:7687 \
+  -e GRAPH_ADVERTISED_BOLT_ADDR=127.0.0.1:7687 \
+  -e GRAPH_DATA_CACHE_DIR=/data/cache \
+  -e GRAPH_AUTH_TOKEN_FILE=/data/auth-token \
+  -e GRAPH_ALLOW_PLAINTEXT=true -e RUST_MIN_STACK=33554432 \
+  ghcr.io/hydra-db/hydradb:latest
+
+# RUST_MIN_STACK is mandatory. Without it the node serves /readyz and then
+# aborts with a stack overflow on the first query.
+
+# 2. In another shell
+cp .env.example .env.local     # fill in ANTHROPIC_API_KEY for the LLM paths
+npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>, scroll to **Live memory console**, then click
+`ingest 3 sessions` and run the four probes. The third session contradicts the first; the
+`full history` probe shows both facts with the old one closed, and `never stated` abstains.
 
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
+## API
+
+| Route | Purpose |
+|---|---|
+| `GET /api/health` | graph-node reachability (`/readyz`) |
+| `GET /api/stats` | Session / message / fact / entity counts |
+| `POST /api/ingest` | Transcript → Claude extraction → graph write (pass `facts` to skip extraction) |
+| `POST /api/query` | Question → plan → retrieve → synthesize, with enforced abstention |
+| `GET /api/query?entity=` | `algo.SSpaths` multi-hop around one entity |
+| `POST /api/eval` | Run a LongMemEval split and score it |
+
+```bash
+curl -X POST localhost:3000/api/ingest -H 'content-type: application/json' -d '{
+  "userExternalId":"u1","sessionIndex":0,
+  "messages":[{"role":"user","content":"I prefer dark mode.","ts":1700000000000}]}'
+
+curl -X POST localhost:3000/api/query -H 'content-type: application/json' -d '{
+  "userExternalId":"u1","question":"What theme does the user prefer?"}'
+```
+
+## Running LongMemEval
+
+The dataset is not vendored — download it from
+[xiaowu0162/LongMemEval](https://github.com/xiaowu0162/LongMemEval) and point at the JSON:
+
+```bash
+export LONGMEMEVAL_PATH=data/longmemeval_s.json
+
+# Small slice first — one instance ingests ~48 sessions
+node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --limit 5
+
+# One question type
+node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --types knowledge-update
+
+# Full run. Streams to JSONL and resumes on re-invocation, which matters
+# because a 500-question run ingests ~24,000 sessions.
+node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --out results/s-full.jsonl
+```
+
+Scoring: abstention instances (`question_id` ending `_abs`) are correct only if the system
+abstained. Answerable instances are graded by normalised string match, falling back to a
+Claude judge — matching LongMemEval's own LLM-as-judge metric. Session-level recall is
+reported alongside accuracy.
+
+Each instance is namespaced under its own `question_id` as the user id, so 500 haystacks
+share one graph without bleeding into each other.
+
+## Third-party attribution
+
+| Source | Use | Licence |
+|---|---|---|
+| [HydraDB](https://github.com/hydra-db/hydradb) | Graph database | see upstream repo |
+| [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (ICLR 2025) | Primary evaluation set | see upstream repo |
+| LongMemEval-V2 / [BEAM](https://github.com/mohammadtavakoli78/BEAM) | Planned harder splits | see upstream repos |
+| [Anthropic Claude API](https://docs.anthropic.com) (`@anthropic-ai/sdk`) | Fact extraction, query planning, answer synthesis, eval judging | MIT (SDK) |
+| Zep / mem0 published figures | Baseline rows in the comparison table, as reported by their authors | — |
+| Next.js, React, Tailwind CSS, Framer Motion, lucide-react, Geist | App framework and UI | MIT / Apache-2.0 |
+
+No embedding or vector API is used, deliberately.
+
+## HydraDB notes
+
+`HYDRADB-NOTES.md` records the wire contract as verified against a live node, including
+constraints the published docs do not state — the request field is `parameters` not
+`params`, rows are positional and type-tagged, standalone vertex `MERGE` is rejected,
+`UNWIND` edge writes require one label per endpoint plus an inline relationship id, and
+`relTypes` must be a literal rather than a parameter. Read it before editing any Cypher in
+`src/lib/`.
+
+## Status
+
+See `completion.md` for what is built, what is verified live, and what remains.
+
+## Licence
+
+MIT — see `LICENSE`.

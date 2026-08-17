@@ -32,25 +32,31 @@ function ScrambleText({ text, className }: { text: string; className?: string })
 }
 
 const STATS = [
-  { label: "Recall Accuracy", value: "90.79%", sub: "LongMemEval-S", highlight: true },
-  { label: "Retrieval Latency", value: "42ms",   sub: "p50 average",   highlight: false },
-  { label: "Compression",      value: "70%",     sub: "via consolidation", highlight: false },
-  { label: "Channels",         value: "5",       sub: "fused via RRF", highlight: false },
+  { label: "Recall Accuracy", value: "—", sub: "LongMemEval-S, run pending", highlight: true },
+  { label: "Fact Lookup", value: "3ms",   sub: "current-truth read, measured",   highlight: false },
+  { label: "Supersede Write",      value: "48ms",     sub: "close old + link new", highlight: false },
+  { label: "Vector Calls",         value: "0",       sub: "graph-native retrieval", highlight: false },
 ]
 
+// Baselines are the figures the LongMemEval and Zep papers report. track3's own
+// row is intentionally blank: the harness is built (src/lib/longmemeval.ts,
+// scripts/run-eval.mjs) but the run has not been executed, and publishing a
+// number we have not measured would make every other number here worthless.
 const BENCHMARK_ROWS = [
-  { name: "track3",            score: 90.79, display: "90.79%", leader: true },
-  { name: "Zep",               score: 71.20, display: "71.20%", leader: false },
-  { name: "Full Context GPT-4",score: 60.20, display: "60.20%", leader: false },
-  { name: "mem0 OSS",          score: 29.07, display: "29.07%", leader: false },
+  { name: "track3 (this build)", score: 0,     display: "run pending", leader: true },
+  { name: "Zep",               score: 71.20, display: "71.20% (reported)", leader: false },
+  { name: "Full Context GPT-4",score: 60.20, display: "60.20% (reported)", leader: false },
+  { name: "mem0 OSS",          score: 29.07, display: "29.07% (reported)", leader: false },
 ]
 
+// Capability comparison, not a score comparison. Every track3 cell here is a
+// property of the data model that can be checked in the code.
 const CATEGORY_ROWS = [
-  { category: "Single Session Recall",   track3: "100%",  zep: "92.9%", mem0: "38.7%" },
-  { category: "Preference Extraction",   track3: "96.7%", zep: "56.7%", mem0: "40.0%" },
-  { category: "Temporal Reasoning",      track3: "90.9%", zep: "62.4%", mem0: "25.6%" },
-  { category: "Knowledge Updates",       track3: "97.4%", zep: "83.3%", mem0: "52.6%" },
-  { category: "Multi-session Reasoning", track3: "76.7%", zep: "57.9%", mem0: "20.3%" },
+  { category: "Overwritten facts retained",  track3: "Yes, SUPERSEDES", zep: "Partial", mem0: "No" },
+  { category: "Abstention when absent",      track3: "Yes, by construction", zep: "Heuristic", mem0: "No" },
+  { category: "Answer cites source turn",    track3: "Yes, ASSERTS edge", zep: "Partial", mem0: "No" },
+  { category: "Retrieval is a traversal",    track3: "Yes, algo.SSpaths", zep: "Hybrid", mem0: "Vector only" },
+  { category: "Embedding model required",    track3: "None", zep: "Yes", mem0: "Yes" },
 ]
 
 export function AboutSection() {

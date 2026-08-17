@@ -30,7 +30,7 @@ const PLANS = [
     features: [
       "Everything in Free",
       "Up to 2M memories",
-      "Emotional + temporal retrieval",
+      "Temporal + multi-hop retrieval",
       "Adaptive strategy selection",
       "Memory consolidation",
       "Private Slack channel",

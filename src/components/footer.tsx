@@ -31,12 +31,12 @@ export function Footer() {
             </div>
             <p className="text-xs font-mono text-white/50 leading-relaxed">
               The memory layer AI agents actually deserve.
-              Graph-native, emotionally aware, adaptive —
+              Graph-native, temporally versioned, abstention-first —
               one API to make your agents remember everything.
             </p>
             <div className="flex flex-col gap-1.5">
               {[
-                "LongMemEval: 90.79% — Best in class",
+                "Temporal fact graph on HydraDB",
                 "Free tier — No credit card required",
                 "BYOK — Your keys, your data",
               ].map((item) => (

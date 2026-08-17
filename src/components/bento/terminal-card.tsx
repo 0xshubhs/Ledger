@@ -8,22 +8,23 @@ const LOG_LINES = [
   "> Entity resolution: enabled",
   "> Temporal versioning: git-style",
   "> Interaction received: USER_MESSAGE",
-  "> Encoding: semantic + emotional + context [OK]",
+  "> Extracting facts: subject/predicate/object [OK]",
   "> Emotion detected: CONFIDENT",
   "> Entity extracted: ['User', 'Preference', 'Dark Mode']",
   "> Episode boundary: detected [NEW_EPISODE]",
   "> Writing to graph: 3 nodes, 2 edges [STORED]",
   "> Consolidation check: similarity > 0.85 [MERGE]",
   "> Retrieval query: 'user UI preferences'",
-  "> Channels: semantic(0.6) graph(0.4) RRF fused",
-  "> Result: 4 memories, latency 42ms",
-  "> Strategy updated: Thompson Sampling",
+  "> Plan: current-truth lookup, valid_to = 0",
+  "> Result: 1 current fact, 1 superseded [3ms]",
+  "> Provenance: ASSERTS -> session 5, turn 0",
   "> Adaptive weight adjusted: graph +0.05",
   "> --------- MEMORY_CYCLE_COMPLETE ---------",
 ]
 
 export function TerminalCard() {
-  const [lines, setLines] = useState<string[]>([])
+  // The first log line is initial state, not something an effect should set.
+  const [lines, setLines] = useState<string[]>([LOG_LINES[0]])
   const [currentLine, setCurrentLine] = useState(0)
 
   useEffect(() => {
@@ -38,7 +39,6 @@ export function TerminalCard() {
         return next
       })
     }, 600)
-    setLines([LOG_LINES[0]])
     return () => clearInterval(interval)
   }, [])
 

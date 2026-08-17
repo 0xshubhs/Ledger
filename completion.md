@@ -2,57 +2,135 @@
 
 Tracks what's actually built vs. what plan.md describes. Updated as work lands.
 
+**Status: the graph layer is complete and verified end-to-end against a live HydraDB
+graph-node.** The LongMemEval harness is built and tested against a synthetic fixture in
+the real dataset schema, but the benchmark run itself has not been executed — that is the
+one gap that matters most for this track.
+
+## Verified live against a running graph-node
+
+All of the following was executed, not inferred from documentation:
+
+- **Knowledge update**: session 0 asserts `prefers_theme = dark mode`; session 5 asserts
+  `light mode`. The write reported `factsSuperseded: 1`, and the graph shows the old fact
+  closed at exactly the new fact's `valid_from` (`validTo 1685282700000` ==
+  `validFrom 1685282700000`) with both retained. **48ms** for the whole supersede sequence.
+- **Current truth**: returns `light mode` only, in **2–3ms**, via the `current` path.
+- **Full history**: returns both versions oldest-first, the old one marked superseded.
+- **Abstention**: an unstated predicate returns 0 rows, `abstained: true`,
+  `reason: "Not found in memory"` — and the answer layer is never called.
+- **Provenance**: each answer carries the exact source turn, e.g. *"Actually I went back to
+  light mode, dark strained my eyes."* (session 5, role user) — which required storing
+  `Message.content` on the vertex.
+- **Multi-hop**: `algo.SSpaths` from entity `editor` returned 10 paths, walking
+  `Entity → Fact → SUPERSEDES → Fact → Message → Session` across sessions.
+- **Eval harness logic**: date parsing (order-preserving), abstention detection, type and
+  id filtering, normalised matching, and summary statistics all verified against a
+  fixture in the real LongMemEval schema. Per-instance errors are captured rather than
+  crashing a long run, and an errored abstention instance is *not* scored as a correct
+  abstention.
+- `npx tsc --noEmit` clean · `npm run build` clean.
+
 ## Done
 
-- [x] Landing page (full: navbar, hero, marquee, bento grid, feature cards, how-it-works, benchmarks, pricing, CTA, footer) — branded "track3"
-- [x] `src/lib/hydradb.ts` — HTTP JSON query client (`POST /v1/graphs/{graph}/query`), causal/strong consistency, `checkHealth()` against `/readyz`
-- [x] `src/lib/id.ts` — `stableId()`: deterministic string → non-negative integer (SHA-256, 48-bit), since HydraDB vertex ids must be non-negative integers
-- [x] `src/lib/memory.ts` — graph domain logic:
-  - `ingestSession()` — writes User/Session/Message vertices + HAS_SESSION/CONTAINS edges, two-pass UNWIND (upsert-then-connect, no `WITH` threading)
-  - `writeFact()` — knowledge-update semantics: if the current fact's object changed, closes the old fact (`valid_to = new.valid_from`) and links `SUPERSEDES`, rather than overwriting
-  - `getCurrentFact()` / `getFactHistory()` — current-truth and full-history reads
-  - `multiHopFromEntity()` — wraps `algo.SSpaths` for cross-session reasoning
-- [x] `src/lib/extract.ts` — Claude-based fact/entity extraction from a transcript (`claude-sonnet-5`), JSON-only prompt with defensive parsing
-- [x] API routes: `GET /api/health`, `POST /api/ingest` (transcript → extract → write), `POST /api/query` + `GET /api/query?entity=` (current/history/multi-hop)
-- [x] `npx tsc --noEmit` clean
-- [x] `npm run build` clean — all 3 routes registered as dynamic (ƒ), landing page static (○)
-- [x] `.env.example`
+- [x] Landing page (navbar, hero, marquee, bento grid, feature cards, how-it-works,
+      benchmarks, pricing, CTA, footer) — branded "track3", blue accent
+- [x] **Live memory console** wired to the real API — ingest 3 sessions where one
+      contradicts another, then probe current truth / full history / other session /
+      never-stated, with the source turn quoted and superseded facts visibly greyed
+- [x] `src/lib/hydradb.ts` — HTTP client with the **verified** wire contract: `parameters`
+      (not `params`), positional type-tagged row decoding, path decoding, `HydraSession`
+      bookmark threading, structured error surfacing
+- [x] `src/lib/graphwrite.ts` — the two `UNWIND` batch forms HydraDB actually executes
+- [x] `src/lib/memory.ts` — session/message/fact/entity writes, supersede semantics,
+      current-truth and history reads, entity fan-out, provenance lookup, multi-hop, counts
+- [x] `src/lib/extract.ts` — Claude fact extraction with per-turn source indices, query
+      planning, and answer synthesis with enforced abstention
+- [x] `src/lib/longmemeval.ts` — dataset schema, filtering (type / abstention / id /
+      offset), string + LLM-judge grading, summary stats including session-level recall
+- [x] `src/lib/evalrunner.ts` — drives one instance end-to-end, namespaced per
+      `question_id` so 500 haystacks share one graph without bleeding
+- [x] `scripts/run-eval.mjs` — full-run CLI, streams JSONL, resumes after an interruption
+- [x] API routes: `health`, `stats`, `ingest`, `query`, `eval`
+- [x] `LICENSE` (MIT), README with setup + HydraDB usage + LongMemEval instructions +
+      third-party attribution
+- [x] `HYDRADB-NOTES.md` — the wire contract as verified, including constraints the
+      published docs don't state
+- [x] plan.md reconciled, with a divergences section rather than silent edits
+- [x] Landing-page copy corrected. It previously advertised a **different product**:
+      "LongMemEval 90.79%", a 5-channel semantic/emotional retrieval fusion via RRF, and
+      Thompson Sampling adaptive weights — none of which exist, and the semantic channel
+      directly contradicted plan.md's deliberate no-vectors thesis. Replaced with the real
+      differentiators and measured numbers; the benchmark row is left blank.
+
+### Bugs found and fixed along the way
+
+- **Fact identity collision.** Keying a fact on `(subject, predicate, valid_from)` meant two
+  revisions inside one session produced the same vertex id: the second write overwrote the
+  first in place, closed it against its own `valid_from` (making it invisible to
+  current-truth reads), and created a `SUPERSEDES` self-loop. Identity now includes the
+  object.
+- **Messages stored no content.** The `ASSERTS` provenance edge existed but pointed at a
+  vertex with no text, so no answer could quote its source.
+- **Session-wide timestamps.** Facts were stamped with `Date.now()` per session, flattening
+  every turn onto one instant. Now stamped from the asserting turn, which is what
+  temporal-reasoning questions order by.
 
 ## Not done yet
 
-- [ ] **Live verification against a running HydraDB node.** Docker daemon wasn't up on this machine during this session (`docker info` never returned ready after ~2 min), so none of the Cypher in `memory.ts` has been run against a real graph-node. Everything is modeled closely on the exact examples in HydraDB's `cypher-compat.md` (two-pass UNWIND, `MERGE {id}` then `SET`, no `WITH` chaining, `valid_to = 0` sentinel instead of unsupported `IS NULL`), but "modeled on the docs" is not the same as "confirmed working." **This is the top priority next step.**
-- [ ] The HTTP response envelope (`hydradb.ts`'s `rows`/`bookmark` parsing) is inferred from the README's one curl example, not confirmed. May need adjustment once a real response is seen.
-- [ ] `LongMemEval` dataset harness — nothing wired up yet to actually run the benchmark and produce the plan's target accuracy numbers. `/api/eval` mentioned in plan.md doesn't exist yet.
-- [ ] No UI wiring — the landing page doesn't call any of these API routes yet (no demo transcript box, no "why this answer" graph panel).
-- [ ] `Entity` merge on lowercased name is naive — no real entity resolution (e.g. "Sam" vs "@soham") despite that being called out as a hard part in the track brief.
+- [ ] **LongMemEval has not been run.** This is the top priority and the largest gap. The
+      harness is complete but needs an `ANTHROPIC_API_KEY` and real wall-clock: a 500-question
+      run ingests ~24,000 sessions with one extraction call each. Start with
+      `--limit 5`, then `--types knowledge-update`, then the full split.
+- [ ] **Supersede is not atomic.** A read followed by three durable writes. Concurrent
+      writers on the same `(subject, predicate)` could interleave, and HydraDB exposes no
+      guarded-merge primitive to prevent it. The eval runner writes sessions sequentially
+      because of this, parallelising only extraction.
+- [ ] **Entity resolution is naive** — a lowercased-name `MERGE`. "Sam" vs "@soham" remain
+      separate entities, and the track brief calls this out as a hard part.
+- [ ] **Query planning is single-shot.** One predicate guess with an entity fallback. A
+      multi-session question needing two different predicates will under-retrieve.
+- [ ] **BEAM and LongMemEval-V2 are not wired** — only the base LongMemEval schema is read.
+- [ ] **No graph visualisation** in the console; multi-hop paths are returned by the API
+      (`GET /api/query?entity=`) but not drawn.
+- [ ] Demo video not recorded.
 
-## How to verify locally once Docker is up
+## Reproduce the verification
 
 ```bash
-mkdir -p .hydradb/store .hydradb/cache
-printf '%s\n' 'local-development-token-32-bytes' > .hydradb/auth-token
-docker run --rm --user "$(id -u):$(id -g)" \
-  -p 7687:7687 -p 8443:8443 -p 9090:9090 \
-  -v "$PWD/.hydradb:/data" \
+# graph-node (RUST_MIN_STACK is mandatory — see README)
+docker run --rm --name hydradb --user "$(id -u):$(id -g)" \
+  -p 7687:7687 -p 8443:8443 -p 9090:9090 -v "$PWD/.hydradb:/data" \
   -e CLOUD_PROVIDER=local -e LOCAL_PATH=/data/store \
   -e GRAPH_NAMESPACE=default -e GRAPH_ID=default \
   -e GRAPH_CELL_ID=cell-0 -e GRAPH_CELLS=cell-0 -e GRAPH_NODE_ID=node-0 \
   -e GRAPH_BOLT_NODE_ADDRESSES=node-0=127.0.0.1:7687 \
   -e GRAPH_ADVERTISED_BOLT_ADDR=127.0.0.1:7687 \
-  -e GRAPH_DATA_CACHE_DIR=/data/cache \
-  -e GRAPH_AUTH_TOKEN_FILE=/data/auth-token \
+  -e GRAPH_DATA_CACHE_DIR=/data/cache -e GRAPH_AUTH_TOKEN_FILE=/data/auth-token \
   -e GRAPH_ALLOW_PLAINTEXT=true -e RUST_MIN_STACK=33554432 \
   ghcr.io/hydra-db/hydradb:latest
 
-# separate shell
-cp .env.example .env.local   # fill in ANTHROPIC_API_KEY
-npm run dev
-curl localhost:3001/api/health
-curl -X POST localhost:3001/api/ingest -H 'content-type: application/json' -d '{
-  "userExternalId": "u1", "sessionIndex": 0,
-  "messages": [{"role":"user","content":"I prefer dark mode.","ts": 1000}]
-}'
-curl -X POST localhost:3001/api/query -H 'content-type: application/json' -d '{
-  "userExternalId": "u1", "subject": "user", "predicate": "prefers"
-}'
+cp .env.example .env.local && npm install && npm run dev
+
+# The knowledge-update scenario, without needing an API key (facts supplied directly)
+curl -X POST localhost:3000/api/ingest -H 'content-type: application/json' -d '{
+  "userExternalId":"u1","sessionIndex":0,"startedAt":1684549260000,
+  "messages":[{"role":"user","content":"I switched to dark mode.","ts":1684549260000}],
+  "facts":[{"subject":"user","predicate":"prefers_theme","object":"dark mode",
+            "entities":["editor"],"sourceMessageIndex":0}]}'
+
+curl -X POST localhost:3000/api/ingest -H 'content-type: application/json' -d '{
+  "userExternalId":"u1","sessionIndex":5,"startedAt":1685282700000,
+  "messages":[{"role":"user","content":"Actually I went back to light mode.","ts":1685282700000}],
+  "facts":[{"subject":"user","predicate":"prefers_theme","object":"light mode",
+            "entities":["editor"],"sourceMessageIndex":0}]}'
+# -> factsSuperseded: 1
+
+curl -X POST localhost:3000/api/query -H 'content-type: application/json' \
+  -d '{"userExternalId":"u1","subject":"user","predicate":"prefers_theme","retrieveOnly":true}'
+# -> light mode, CURRENT, with the session-5 turn as provenance
+
+curl -X POST localhost:3000/api/query -H 'content-type: application/json' \
+  -d '{"userExternalId":"u1","subject":"user","predicate":"favourite_airline","retrieveOnly":true}'
+# -> abstained: true
 ```
