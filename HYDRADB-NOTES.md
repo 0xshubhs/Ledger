@@ -155,7 +155,7 @@ without paying for `strong` on every call.
 ```bash
 docker run -d --name hydradb-test --user "$(id -u):$(id -g)" \
   -p 7687:7687 -p 8443:8443 -p 9090:9090 -v "$PWD/.hydradb-test:/data" \
-  -e CLOUD_PROVIDER=local -e LOCAL_PATH=/data/store \
+  -e CLOUD_PROVIDER=memory \
   -e GRAPH_NAMESPACE=default -e GRAPH_ID=default \
   -e GRAPH_CELL_ID=cell-0 -e GRAPH_CELLS=cell-0 -e GRAPH_NODE_ID=node-0 \
   -e GRAPH_BOLT_NODE_ADDRESSES=node-0=127.0.0.1:7687 \
@@ -169,3 +169,22 @@ docker run -d --name hydradb-test --user "$(id -u):$(id -g)" \
 
 `RUST_MIN_STACK=33554432` is mandatory — without it the node serves `/readyz`
 and then aborts with a stack overflow on the first query.
+
+## Object store: `memory`, not `local`
+
+`CLOUD_PROVIDER=local` is what the HydraDB README documents, and it works right
+up until SlateDB needs a conditional write on its manifest:
+
+```
+object store error: Operation `put_opts` with mode `PutMode::Update`
+not yet implemented by LocalFileSystem(file:///data/store)
+```
+
+The HTTP layer reports this as a bare `500 internal query execution error` on
+whichever statement happened to trigger the flush, with the real cause only in
+the node's own log — so it reads like a bug in your Cypher. A few hundred writes
+survive; sustained ingestion does not.
+
+`CLOUD_PROVIDER=memory` has no such limitation (verified: 564 messages across 66
+sessions, zero errors) but is not durable across a container restart. For a long
+run keep the container up, or use an S3-compatible store such as MinIO.

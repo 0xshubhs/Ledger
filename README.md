@@ -96,9 +96,9 @@ supplies facts directly so the graph layer can be exercised on its own.
 # 1. Start a HydraDB graph-node
 mkdir -p .hydradb/store .hydradb/cache
 printf '%s\n' 'local-development-token-32-bytes' > .hydradb/auth-token
-docker run --rm --name hydradb --user "$(id -u):$(id -g)" \
+docker run -d --name hydradb --user "$(id -u):$(id -g)" \
   -p 7687:7687 -p 8443:8443 -p 9090:9090 -v "$PWD/.hydradb:/data" \
-  -e CLOUD_PROVIDER=local -e LOCAL_PATH=/data/store \
+  -e CLOUD_PROVIDER=memory \
   -e GRAPH_NAMESPACE=default -e GRAPH_ID=default \
   -e GRAPH_CELL_ID=cell-0 -e GRAPH_CELLS=cell-0 -e GRAPH_NODE_ID=node-0 \
   -e GRAPH_BOLT_NODE_ADDRESSES=node-0=127.0.0.1:7687 \
@@ -110,7 +110,19 @@ docker run --rm --name hydradb --user "$(id -u):$(id -g)" \
 
 # RUST_MIN_STACK is mandatory. Without it the node serves /readyz and then
 # aborts with a stack overflow on the first query.
+```
 
+> **Use `CLOUD_PROVIDER=memory`, not `local`.** The local-filesystem object
+> store does not implement conditional writes — after enough writes SlateDB
+> needs a `PutMode::Update` on its manifest and `LocalFileSystem` rejects it,
+> surfacing as `HTTP 500 internal query execution error` on an arbitrary
+> statement with the real cause only in the node's own log:
+> `Operation put_opts with mode PutMode::Update not yet implemented by
+> LocalFileSystem`. Small demos survive it; any sustained ingest does not.
+> `memory` has no such limit but is not durable across a container restart —
+> for a long run, keep the container up, or point at S3/MinIO instead.
+
+```bash
 # 2. Start a local model (no API key needed)
 ollama pull qwen3.5:4b
 printf 'FROM qwen3.5:4b\nPARAMETER num_ctx 16384\n' > /tmp/M

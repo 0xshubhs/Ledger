@@ -182,7 +182,17 @@ export async function runQuery<T = Record<string, unknown>>(
   if (!res.ok) {
     const err = body as { error?: { code?: string; message?: string } }
     const detail = err.error?.message ?? text.slice(0, 500)
-    throw new Error(`HydraDB query failed (${res.status} ${err.error?.code ?? "error"}): ${detail}`)
+
+    // The node's own message is often generic ("internal query execution
+    // error") and the real cause is in its container log, so name the statement
+    // that failed. Without this, a 500 mid-run says nothing about which of the
+    // dozen write shapes broke.
+    const oneLine = query.replace(/\s+/g, " ").trim()
+    throw new Error(
+      `HydraDB query failed (${res.status} ${err.error?.code ?? "error"}): ${detail}` +
+        ` | statement: ${oneLine.slice(0, 220)}${oneLine.length > 220 ? "…" : ""}` +
+        ` | check the graph-node log for the underlying error (docker logs <container>)`
+    )
   }
 
   const wire = body as WireResponse
