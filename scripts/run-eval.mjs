@@ -114,6 +114,53 @@ function summarize(results) {
 
 const args = parseArgs(process.argv)
 
+/**
+ * Fail fast on the two things that make every instance fail identically: an
+ * unreachable dev server, and a missing API key. Without this, a full run
+ * cheerfully burns through 500 instances writing the same error to each row,
+ * and only the summary at the end reveals that nothing was actually evaluated.
+ */
+async function preflight() {
+  let health
+  try {
+    health = await fetch(`${args.base}/api/health`)
+  } catch {
+    console.error(`Cannot reach ${args.base} — is 'npm run dev' running?`)
+    console.error(`(override with --base or EVAL_BASE_URL if it's on another port)`)
+    process.exit(1)
+  }
+  if (!health.ok) {
+    console.error(`${args.base}/api/health says the graph-node is unreachable.`)
+    console.error(`Start a HydraDB node — see README, section "Setup".`)
+    process.exit(1)
+  }
+
+  // One real instance through the pipeline. If the key is missing or wrong, the
+  // runner reports it here rather than 500 rows later.
+  const probe = await fetch(`${args.base}/api/eval`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ datasetPath: args.dataset, limit: 1, concurrency: 1 }),
+  })
+  const body = await probe.json().catch(() => ({}))
+  if (!probe.ok) {
+    console.error(`Preflight failed (HTTP ${probe.status}): ${body.error ?? "unknown"}`)
+    process.exit(1)
+  }
+  const err = body.results?.[0]?.error
+  if (err) {
+    console.error(`Preflight failed: ${err}`)
+    if (/ANTHROPIC_API_KEY/i.test(err)) {
+      console.error(`\nAdd your key to .env.local, then restart 'npm run dev':`)
+      console.error(`  ANTHROPIC_API_KEY=sk-ant-...`)
+    }
+    process.exit(1)
+  }
+  console.log(`preflight    ok (one instance ran end-to-end)\n`)
+}
+
+await preflight()
+
 const dataset = JSON.parse(await readFile(args.dataset, "utf8"))
 const done = alreadyDone(args.out)
 
