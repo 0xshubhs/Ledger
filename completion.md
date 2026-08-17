@@ -24,11 +24,19 @@ All of the following was executed, not inferred from documentation:
   `Message.content` on the vertex.
 - **Multi-hop**: `algo.SSpaths` from entity `editor` returned 10 paths, walking
   `Entity → Fact → SUPERSEDES → Fact → Message → Session` across sessions.
-- **Eval harness logic**: date parsing (order-preserving), abstention detection, type and
-  id filtering, normalised matching, and summary statistics all verified against a
-  fixture in the real LongMemEval schema. Per-instance errors are captured rather than
-  crashing a long run, and an errored abstention instance is *not* scored as a correct
-  abstention.
+- **Eval harness against the real dataset**: both official splits downloaded from
+  HuggingFace (`xiaowu0162/longmemeval`, oracle 15MB / S 266MB, 500 instances each) and
+  parsed by the harness — **0 unparseable timestamps across all 500 instances**, correct
+  type counts (temporal-reasoning 133, multi-session 133, knowledge-update 78,
+  single-session-user 70, single-session-assistant 56, single-session-preference 30) and
+  30 abstention instances detected. Filtering by type / abstention / id / offset verified
+  on real rows. Per-instance errors are captured rather than crashing a long run, and an
+  errored abstention instance is *not* scored as a correct abstention.
+- **Graph layer at real LongMemEval volume** (`scripts/scale-check.mjs`): the worst-case S
+  instance — 66 sessions, 564 turns, ~121K tokens, the exact size the track brief
+  describes — ingests in **1.4–1.6s at ~400 messages/sec**. Extrapolated, the full
+  25,112-session run is roughly **9 minutes of graph writes**. The graph is not the
+  bottleneck; the 25,112 extraction calls are.
 - `npx tsc --noEmit` clean · `npm run build` clean.
 
 ## Done
@@ -78,10 +86,14 @@ All of the following was executed, not inferred from documentation:
 
 ## Not done yet
 
-- [ ] **LongMemEval has not been run.** This is the top priority and the largest gap. The
-      harness is complete but needs an `ANTHROPIC_API_KEY` and real wall-clock: a 500-question
-      run ingests ~24,000 sessions with one extraction call each. Start with
-      `--limit 5`, then `--types knowledge-update`, then the full split.
+- [ ] **LongMemEval has not been run.** This is the top priority and the only remaining
+      blocker. Everything else is ready: both splits are downloaded to `data/`, the harness
+      parses them, and the graph is measured fast enough. What it needs is an
+      `ANTHROPIC_API_KEY` in `.env.local` and API budget — the full S split is 25,112
+      extraction calls plus 500 planning, 500 synthesis and up to 500 judge calls.
+      Recommended order: `--limit 5` to sanity-check the loop, then
+      `--types knowledge-update` (78 instances, the split this data model should win
+      hardest), then the full run.
 - [ ] **Supersede is not atomic.** A read followed by three durable writes. Concurrent
       writers on the same `(subject, predicate)` could interleave, and HydraDB exposes no
       guarded-merge primitive to prevent it. The eval runner writes sessions sequentially
