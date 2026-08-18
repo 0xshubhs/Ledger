@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { MemoryGraph, type GraphPath } from "./memory-graph"
 
 interface FactRow {
   id: number
@@ -132,6 +133,9 @@ export function MemoryConsole() {
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<(QueryResponse & { probe: string }) | null>(null)
   const [seeded, setSeeded] = useState(false)
+  const [graph, setGraph] = useState<{ entity: string; sourceId: number; paths: GraphPath[] } | null>(
+    null
+  )
   const logRef = useRef<HTMLDivElement>(null)
 
   const append = useCallback((level: LogLevel, text: string) => {
@@ -179,6 +183,7 @@ export function MemoryConsole() {
   }
 
   async function seed() {
+    setGraph(null)
     setBusy("seed")
     setResult(null)
     try {
@@ -206,6 +211,33 @@ export function MemoryConsole() {
       setSeeded(true)
       await refreshStats()
       append("info", "memory ready — probe it below")
+    } catch (error) {
+      append("err", (error as Error).message)
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /**
+   * The multi-hop path query, drawn rather than logged.
+   *
+   * This is the part a triple list cannot show: `algo.SSpaths` walks out from
+   * one entity across ABOUT / ASSERTS / SUPERSEDES / CONTAINS, so the picture
+   * contains both revisions of the preference, the turns that stated them, and
+   * the sessions those turns came from — with the SUPERSEDES arrow saying which
+   * replaced which.
+   */
+  async function explore(entity: string) {
+    setBusy("graph")
+    try {
+      const res = await fetch(`/api/query?entity=${encodeURIComponent(entity)}&maxLen=4`)
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? `graph query failed (${res.status})`)
+      setGraph({ entity, sourceId: json.entityId ?? -1, paths: json.paths ?? [] })
+      append(
+        json.paths?.length ? "ok" : "warn",
+        `algo.SSpaths from "${entity}" → ${json.pathCount ?? 0} path(s) across ${json.paths?.length ? "the fact graph" : "nothing yet"}`
+      )
     } catch (error) {
       append("err", (error as Error).message)
     } finally {
@@ -310,7 +342,34 @@ export function MemoryConsole() {
               {busy === p.label ? "querying…" : p.label}
             </button>
           ))}
+          <button
+            onClick={() => explore("editor")}
+            disabled={busy !== null || !seeded}
+            className="border-2 border-black bg-white px-5 py-3 text-xs font-bold uppercase tracking-[0.2em] transition-colors hover:bg-neutral-100 disabled:opacity-40"
+          >
+            {busy === "graph" ? "walking…" : "multi-hop graph"}
+          </button>
         </div>
+
+        {graph && (
+          <div className="mb-8">
+            <div className="mb-2 flex items-baseline justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-500">
+                algo.SSpaths from entity “{graph.entity}”
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">
+                {graph.paths.length} path(s) · hover a node to isolate its chain
+              </span>
+            </div>
+            {graph.paths.length === 0 ? (
+              <p className="border-2 border-black bg-neutral-50 p-4 text-sm text-neutral-500">
+                No paths from that entity yet — ingest the sessions first.
+              </p>
+            ) : (
+              <MemoryGraph paths={graph.paths} sourceId={graph.sourceId} />
+            )}
+          </div>
+        )}
 
         <div className="grid gap-px border-2 border-black bg-black lg:grid-cols-2">
           <div className="bg-white p-6">
