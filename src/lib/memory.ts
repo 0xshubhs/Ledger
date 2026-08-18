@@ -54,7 +54,8 @@ function messageVertexId(userExternalId: string, sessionIndex: number, index: nu
   return stableId(`message:${userExternalId}:${sessionIndex}:${index}`)
 }
 
-function entityVertexId(name: string): number {
+/** Vertex id for a named entity. Exported so a route can address one directly. */
+export function entityVertexId(name: string): number {
   return stableId(`entity:${name.trim().toLowerCase()}`)
 }
 
@@ -314,7 +315,8 @@ export interface RetrievalResult {
 }
 
 /**
- * Resolves a planned question into a fact set, trying the narrowest lookup first.
+ * Resolves a planned question into a fact set: narrowest lookup first, then
+ * widened, with the tiers unioned rather than raced.
  *
  * The tiers matter, and tier 3 exists because of a measured failure. Tiers 1 and
  * 2 require two independent model calls — the extractor that chose a predicate
@@ -335,36 +337,84 @@ export interface RetrievalResult {
  *
  * Abstention therefore survives the change; only the "we found nothing because
  * we guessed the wrong key" failure goes away.
+ *
+ * The tiers are unioned rather than returned first-match-first for a second
+ * measured reason: a narrow hit that lands is usually still incomplete. On
+ * temporal-reasoning questions the entity tier returned two to five facts,
+ * short-circuited the working set, and the answer layer abstained for want of
+ * the other half of the comparison.
  */
 export async function retrieveFacts(
   userExternalId: string,
   plan: RetrievalPlan,
   options: { workingSetLimit?: number } = {}
 ): Promise<RetrievalResult> {
-  if (plan.wantsHistory && plan.predicate) {
-    const facts = await getFactHistory(userExternalId, plan.subject, plan.predicate)
-    if (facts.length > 0) return { facts, path: "history" }
-  } else if (plan.predicate) {
-    const current = await getCurrentFact(userExternalId, plan.subject, plan.predicate)
-    if (current) return { facts: [current], path: "current" }
+  const limit = options.workingSetLimit ?? 200
+  const facts: FactRow[] = []
+  const seen = new Set<number>()
+  let path: RetrievalPath = "none"
+
+  const add = (rows: FactRow[], from: RetrievalPath) => {
+    let added = 0
+    for (const row of rows) {
+      if (seen.has(row.id)) continue
+      seen.add(row.id)
+      facts.push(row)
+      added++
+    }
+    if (added > 0 && path === "none") path = from
+  }
+
+  if (plan.predicate) {
+    if (plan.wantsHistory) {
+      add(await getFactHistory(userExternalId, plan.subject, plan.predicate), "history")
+    } else {
+      const current = await getCurrentFact(userExternalId, plan.subject, plan.predicate)
+      if (current) add([current], "current")
+    }
   }
 
   if (plan.entities.length > 0) {
     const perEntity = await Promise.all(
       plan.entities.map((name) => getFactsAboutEntity(userExternalId, name))
     )
-    const seen = new Set<number>()
-    const facts = perEntity.flat().filter((f) => !seen.has(f.id) && seen.add(f.id))
-    if (facts.length > 0) return { facts, path: "entity" }
+    add(perEntity.flat(), "entity")
   }
 
-  const workingSet = await getAllCurrentFacts(userExternalId, options.workingSetLimit ?? 200)
-  return workingSet.length > 0
-    ? { facts: workingSet, path: "working-set" }
-    : { facts: [], path: "none" }
+  // The working set is added on top of the narrow hits rather than only when
+  // they miss. A narrow hit that lands is still usually incomplete: "which did I
+  // do first, the workshop or the webinar" needs both events, and an entity
+  // lookup on one of them returns two facts and nothing to compare them
+  // against. Measured on temporal-reasoning, every early-returned entity hit
+  // retrieved 2-5 facts and then abstained. Ordering keeps the targeted rows
+  // first, so `path` still reports how the question was actually matched.
+  add(await getAllCurrentFacts(userExternalId, limit), "working-set")
+
+  return { facts: facts.slice(0, limit), path }
 }
 
-/** Current facts attached to one named entity, via the ABOUT edge. */
+/**
+ * The turns that asserted each of these facts, keyed by fact id.
+ *
+ * A triple loses detail the question may be asking for — "GPS system not
+ * functioning correctly" survives extraction as `car_issue: GPS` at best — so
+ * the answer layer reads the original sentence alongside the fact. There is no
+ * `IN` operator, so this is one id-keyed query per fact, bounded by `limit` and
+ * issued concurrently.
+ */
+export async function getProvenanceForFacts(
+  facts: FactRow[],
+  limit = 24
+): Promise<Map<number, ProvenanceRow[]>> {
+  const wanted = facts.slice(0, limit)
+  const rows = await Promise.all(wanted.map((fact) => getFactProvenance(fact.id)))
+  const byFact = new Map<number, ProvenanceRow[]>()
+  wanted.forEach((fact, i) => {
+    if (rows[i].length > 0) byFact.set(fact.id, rows[i])
+  })
+  return byFact
+}
+
 export async function getFactsAboutEntity(
   userExternalId: string,
   entityName: string
@@ -430,6 +480,27 @@ export async function multiHopFromEntity(
     { params: { entityId: entityVertexId(entityName), maxLen, pathCount } }
   )
   return rows.map((row) => row.path).filter(Boolean)
+}
+
+/**
+ * Relation names already used for this user, most recent first.
+ *
+ * Fed back into extraction so a later statement about the same thing reuses the
+ * existing predicate rather than inventing a new one. That is what makes an
+ * update an update: supersede is keyed on (subject, predicate), so
+ * `ran_charity_5K_in` followed by `has_personal_best_time` leaves two unrelated
+ * current facts and the store cannot tell that one replaced the other.
+ */
+export async function getKnownPredicates(
+  userExternalId: string,
+  limit = 120
+): Promise<string[]> {
+  const { rows } = await runQuery<{ predicate: string }>(
+    `MATCH (f:Fact) WHERE f.user_id = $userId
+     RETURN DISTINCT f.predicate AS predicate LIMIT $limit`,
+    { params: { userId: userId(userExternalId), limit } }
+  )
+  return rows.map((row) => row.predicate).filter(Boolean)
 }
 
 export interface MemoryStats {

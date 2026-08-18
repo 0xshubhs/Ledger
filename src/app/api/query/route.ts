@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { retrieveFacts, getFactProvenance, multiHopFromEntity } from "@/lib/memory"
+import {
+  retrieveFacts,
+  getProvenanceForFacts,
+  multiHopFromEntity,
+  entityVertexId,
+} from "@/lib/memory"
 import { planQuery, synthesizeAnswer } from "@/lib/extract"
 
 interface QueryRequestBody {
@@ -59,7 +64,10 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const provenance = await getFactProvenance(facts[0].id)
+  // Source turns for the top retrieved facts, keyed by fact id. The console
+  // quotes them, and synthesis reads them for detail the triple dropped.
+  const provenanceByFact = await getProvenanceForFacts(facts)
+  const provenance = provenanceByFact.get(facts[0].id) ?? []
 
   if (body.retrieveOnly) {
     return NextResponse.json({ plan, retrievalPath, facts, provenance, retrieveMs })
@@ -67,7 +75,8 @@ export async function POST(req: NextRequest) {
 
   const { answer, abstained } = await synthesizeAnswer(
     body.question ?? `${plan.subject} ${plan.predicate}?`,
-    facts
+    facts,
+    provenanceByFact
   )
 
   return NextResponse.json({
@@ -91,5 +100,8 @@ export async function GET(req: NextRequest) {
   }
   const maxLen = Number(req.nextUrl.searchParams.get("maxLen") ?? 4)
   const paths = await multiHopFromEntity(entity, maxLen)
-  return NextResponse.json({ entity, pathCount: paths.length, paths })
+  // The entity's own vertex id goes back with the paths: the drawing needs to
+  // know which node the traversal started from to lay the columns out by hop
+  // distance, and a path's node order alone does not say that.
+  return NextResponse.json({ entity, entityId: entityVertexId(entity), pathCount: paths.length, paths })
 }

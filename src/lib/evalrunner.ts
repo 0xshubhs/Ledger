@@ -1,4 +1,10 @@
-import { ingestSession, retrieveFacts, type IngestMessage } from "./memory"
+import {
+  ingestSession,
+  retrieveFacts,
+  getProvenanceForFacts,
+  getKnownPredicates,
+  type IngestMessage,
+} from "./memory"
 import { extractFacts, planQuery, synthesizeAnswer } from "./extract"
 import {
   gradeAnswer,
@@ -9,6 +15,16 @@ import {
 } from "./longmemeval"
 
 export interface RunOptions {
+  /**
+   * Prefix for the user id each instance is stored under.
+   *
+   * Facts are never deleted on update, and `DETACH DELETE` becomes unusable on a
+   * large graph (it scans relationships graph-wide and trips admission control
+   * at a million), so a graph that has already seen a run cannot practically be
+   * emptied. A tag gives the next run its own namespace instead, which is what
+   * makes two runs of the same split comparable.
+   */
+  tag?: string
   /** Grade with the LLM judge when string matching is inconclusive. */
   useJudge?: boolean
   /** Sessions ingested concurrently. Extraction is the bottleneck, not the graph. */
@@ -28,8 +44,8 @@ export async function runInstance(
   instance: LongMemEvalInstance,
   options: RunOptions = {}
 ): Promise<InstanceResult> {
-  const { useJudge = true, concurrency = 4, onProgress } = options
-  const userExternalId = instance.question_id
+  const { useJudge = true, concurrency = 4, tag, onProgress } = options
+  const userExternalId = tag ? `${tag}:${instance.question_id}` : instance.question_id
   const abstention = isAbstention(instance)
 
   const base: InstanceResult = {
@@ -73,6 +89,13 @@ export async function runInstance(
 
     for (let offset = 0; offset < sessions.length; offset += concurrency) {
       const slice = sessions.slice(offset, offset + concurrency)
+
+      // Refreshed each batch rather than once: the vocabulary a session should
+      // reuse includes predicates written by the sessions before it, and a
+      // haystack is ingested oldest-first, so the revision arrives after the
+      // statement it revises.
+      const knownPredicates = await getKnownPredicates(userExternalId)
+
       const extracted = await Promise.all(
         slice.map(async (session) => {
           const messages: IngestMessage[] = session.turns.map((turn, i) => ({
@@ -82,7 +105,7 @@ export async function runInstance(
             // colliding with the next session's start.
             ts: session.startedAt + i * 1000,
           }))
-          const facts = await extractFacts(messages)
+          const facts = await extractFacts(messages, knownPredicates)
           return { session, messages, facts }
         })
       )
@@ -121,7 +144,13 @@ export async function runInstance(
     const { facts, path: retrievalPath } = await retrieveFacts(userExternalId, plan)
     base.factsRetrieved = facts.length
 
-    const { answer, abstained } = await synthesizeAnswer(instance.question, facts)
+    // The source turns for the most relevant facts. A triple flattens the
+    // detail a LongMemEval answer is usually graded on ("GPS system not
+    // functioning correctly"), and the sentence that stated it is one hop away
+    // across ASSERTS.
+    const provenance = await getProvenanceForFacts(facts)
+
+    const { answer, abstained } = await synthesizeAnswer(instance.question, facts, provenance)
     base.queryMs = Date.now() - queryStart
     base.systemAnswer = answer
     base.abstained = abstained

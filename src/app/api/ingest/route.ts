@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { ingestSession, type IngestMessage, type ExtractedFact } from "@/lib/memory"
+import {
+  ingestSession,
+  getKnownPredicates,
+  type IngestMessage,
+  type ExtractedFact,
+} from "@/lib/memory"
 import { extractFacts } from "@/lib/extract"
 
 interface IngestRequestBody {
@@ -33,7 +38,13 @@ export async function POST(req: NextRequest) {
   }))
 
   const startedMs = Date.now()
-  const facts = body.facts ?? (await extractFacts(messages))
+  // Supplied facts skip extraction entirely (that is how the console demos the
+  // graph without an LLM). Otherwise extraction is primed with the relation
+  // names this user's memory already uses, so an update reuses one instead of
+  // coining a synonym the supersede logic cannot match.
+  const facts =
+    body.facts ??
+    (await extractFacts(messages, await getKnownPredicates(body.userExternalId)))
   const extractMs = Date.now() - startedMs
 
   const result = await ingestSession({
