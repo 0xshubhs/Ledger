@@ -12,6 +12,8 @@
  *   node scripts/run-eval.mjs --dataset data/longmemeval_s.json --limit 20
  *   node scripts/run-eval.mjs --dataset data/longmemeval_s.json --types knowledge-update
  *   node scripts/run-eval.mjs --dataset data/longmemeval_s.json --out results/s-run2.jsonl
+ *   node scripts/run-eval.mjs --dataset data/longmemeval_oracle.json --sample 100 --no-judge
+ *   node scripts/run-eval.mjs --dataset data/longmemeval_oracle.json --tag run2
  */
 
 import { readFile, appendFile, mkdir } from "node:fs/promises"
@@ -28,6 +30,8 @@ function parseArgs(argv) {
     concurrency: 4,
     noJudge: false,
     onlyAbstention: false,
+    sample: null,
+    tag: null,
   }
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i]
@@ -40,6 +44,8 @@ function parseArgs(argv) {
     else if (arg === "--concurrency") args.concurrency = Number(next())
     else if (arg === "--no-judge") args.noJudge = true
     else if (arg === "--only-abstention") args.onlyAbstention = true
+    else if (arg === "--sample") args.sample = Number(next())
+    else if (arg === "--tag") args.tag = next()
     else {
       console.error(`Unknown argument: ${arg}`)
       process.exit(1)
@@ -160,7 +166,7 @@ async function preflight() {
   const probe = await fetch(`${args.base}/api/eval`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ datasetPath: args.dataset, limit: 1, concurrency: 1 }),
+    body: JSON.stringify({ datasetPath: args.dataset, limit: 1, concurrency: 1, tag: args.tag }),
   })
   const probeBody = await probe.json().catch(() => ({}))
   if (!probe.ok) {
@@ -190,6 +196,36 @@ if (args.onlyAbstention) {
   pending = pending.filter((i) => i.question_id.endsWith("_abs"))
 }
 pending = pending.filter((i) => !done.has(i.question_id))
+
+/**
+ * A stratified subset, when the full split is more wall-clock than is available.
+ *
+ * `--limit` takes the first N, which on this dataset means the first N of
+ * whatever type happens to sort first — the oracle split's first 130 rows are
+ * all temporal-reasoning, so a limited run reports one question type and calls
+ * it an accuracy. Sampling instead takes an even stride through each type, so
+ * the mix matches the full split and the per-type rows below are all populated.
+ * The stride is deterministic: the same --sample N always selects the same
+ * instances, so two runs are comparable and a resume continues the same subset.
+ */
+if (args.sample && args.sample < pending.length) {
+  const byType = new Map()
+  for (const instance of pending) {
+    const list = byType.get(instance.question_type) ?? []
+    list.push(instance)
+    byType.set(instance.question_type, list)
+  }
+  const selected = []
+  for (const [, list] of [...byType.entries()].sort()) {
+    const want = Math.max(1, Math.round((list.length / pending.length) * args.sample))
+    const stride = Math.max(1, Math.floor(list.length / want))
+    for (let i = 0; i < list.length && selected.length < args.sample; i += stride) {
+      selected.push(list[i])
+    }
+  }
+  pending = selected
+}
+
 if (Number.isFinite(args.limit)) pending = pending.slice(0, args.limit)
 
 await mkdir(dirname(args.out), { recursive: true })
@@ -197,7 +233,8 @@ await mkdir(dirname(args.out), { recursive: true })
 console.log(`dataset      ${args.dataset} (${dataset.length} instances)`)
 console.log(`already done ${done.size}`)
 console.log(`this run     ${pending.length}`)
-console.log(`output       ${args.out}\n`)
+console.log(`output       ${args.out}`)
+console.log(`namespace    ${args.tag ? `${args.tag}:<question_id>` : "<question_id>"}\n`)
 
 const results = []
 let index = 0
@@ -216,6 +253,7 @@ for (const instance of pending) {
         questionIds: [instance.question_id],
         useJudge: !args.noJudge,
         concurrency: args.concurrency,
+        tag: args.tag,
       }),
     })
 

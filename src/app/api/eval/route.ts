@@ -13,6 +13,8 @@ interface EvalRequestBody {
   includeAbstention?: boolean
   useJudge?: boolean
   concurrency?: number
+  /** Namespaces this run's writes, so a re-run does not read the last one's facts. */
+  tag?: string
 }
 
 /**
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
       await runInstance(instance, {
         useJudge: body.useJudge ?? true,
         concurrency: body.concurrency ?? 4,
+        tag: body.tag,
       })
     )
   }
