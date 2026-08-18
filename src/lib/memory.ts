@@ -420,8 +420,8 @@ export async function getFactsAboutEntity(
   entityName: string
 ): Promise<FactRow[]> {
   const { rows } = await runQuery<FactRow>(
-    `MATCH (f:Fact)-[:ABOUT]->(e:Entity)
-     WHERE e.id = $entityId AND f.user_id = $userId AND f.valid_to = $stillValid
+    `MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $entityId})
+     WHERE f.user_id = $userId AND f.valid_to = $stillValid
      RETURN f.id AS id, f.subject AS subject, f.predicate AS predicate, f.object AS object,
             f.valid_from AS validFrom, f.valid_to AS validTo, f.session_index AS sessionIndex
      ORDER BY validFrom`,
@@ -450,7 +450,10 @@ export interface ProvenanceRow {
  */
 export async function getFactProvenance(factId: number): Promise<ProvenanceRow[]> {
   const { rows } = await runQuery<ProvenanceRow>(
-    `MATCH (m:Message)-[:ASSERTS]->(f:Fact) WHERE f.id = $factId
+    // Bound inside the pattern rather than in a WHERE: the pattern form uses the
+    // id index, the WHERE form scans the Fact label. On a shared graph that also
+    // holds another project's data the difference is a scan of everything.
+    `MATCH (m:Message)-[:ASSERTS]->(f:Fact {id: $factId})
      RETURN m.id AS messageId, m.role AS role, m.content AS content, m.ts AS ts,
             m.session_index AS sessionIndex
      ORDER BY ts`,

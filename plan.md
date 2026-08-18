@@ -105,7 +105,22 @@ Recorded rather than quietly edited, since the plan is part of the submission.
 6. **Entity resolution is still naive** — a lowercased-name `MERGE`. "Sam" and "@soham"
    remain separate entities. The track brief calls this out as a hard part and it is not
    solved.
-7. **LongMemEval has not been run.** The harness is complete and tested against a synthetic
-   fixture in the real dataset schema, but no accuracy number exists yet. This is the
-   largest outstanding gap, and the landing page's benchmark row is left blank because of it.
-8. **BEAM and LongMemEval-V2 are not wired.** Only the base LongMemEval schema is supported.
+7. **Retrieval unions its tiers instead of racing them.** The plan described one bounded
+   lookup per question. Measured, that loses: a predicate guess that lands still returns
+   only the fact it asked for, and a "which came first" question needs both events. The
+   tiers now accumulate — predicate, then entity fan-out, then the user's working set — and
+   `retrievalPath` reports which one matched first. Abstention is unaffected: a user with no
+   facts still returns zero rows, and synthesis is still required to emit `NOT_IN_MEMORY`.
+8. **The answer layer reads source turns, not just triples.** A triple flattens away the
+   detail LongMemEval grades on ("the GPS stopped working" becomes `car_issue: GPS`), so the
+   retrieved facts are rendered with their `valid_from` date and the sentence that asserted
+   them, one hop away across `ASSERTS`. Dates were the larger fix — 133 of the 500 questions
+   are temporal, and a fact list labelled only `session 3` cannot order anything.
+9. **Extraction is primed with the user's existing relation names.** Supersede is keyed on
+   `(subject, predicate)`, so an update only closes the old fact if the extractor reuses the
+   relation name. Left alone it does not: one session writes `ran_charity_5K_in`, the next
+   writes `has_personal_best_time`, and both survive as current truth. The extractor now
+   receives the predicates already stored for that user and is told to reuse one when a
+   statement updates it. This is the plan's "contradiction detection" step, moved from
+   answer time to write time where the graph can act on it.
+10. **BEAM and LongMemEval-V2 are not wired.** Only the base LongMemEval schema is supported.

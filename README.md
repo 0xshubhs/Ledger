@@ -122,6 +122,14 @@ docker run -d --name hydradb --user "$(id -u):$(id -g)" \
 > `memory` has no such limit but is not durable across a container restart —
 > for a long run, keep the container up, or point at S3/MinIO instead.
 
+> **Give this project its own node.** Vertex writes get slower as the *whole*
+> graph grows, not just your slice of it: the only executable vertex form is an
+> unlabeled `MERGE (n {id})`, and the label that would narrow it is applied by a
+> following `SET`. The same two-message ingest measured **93ms** on an empty node
+> and **6,258ms** on a node that also held ~1.5M vertices from another workload.
+> Sharing a graph-node between two projects taxes every write the smaller one
+> makes.
+
 ```bash
 # 2. Start a local model (no API key needed)
 ollama pull qwen3.5:4b
@@ -154,6 +162,12 @@ Two settings matter more than the model choice, both measured on a 6GB RTX 4050:
 | + 16K context | 6.4s | 16 |
 | + prompt & parser fixes | 6.2s | **24** |
 
+The same configuration on an M3 MacBook (16GB unified memory, `qwen3.5-16k:4b`) is slower
+per session but extracts more from each: **30.4s mean, 6.3 facts/session, 1 of 8 sessions
+empty**. Ollama serves that model with a single slot (`-np 1`), so requests queue and
+`--concurrency` above 1 buys nothing — the eval's own concurrency setting overlaps
+extraction with graph writes, not with other extractions.
+
 A hybrid reasoning model spends its entire token budget deliberating and returns empty
 content, so `LLM_REASONING_EFFORT` defaults to `none`. `think: false` and
 `chat_template_kwargs.enable_thinking` are silently ignored on Ollama's `/v1` endpoint —
@@ -164,7 +178,9 @@ node scripts/bench-llm.mjs data/longmemeval_oracle.json
 ```
 
 At 6.2s/session the oracle split (948 sessions) is ~1.6h and the S split (25,112) is ~43h,
-so oracle is the realistic local target.
+so oracle is the realistic local target. On the M3 above, a whole instance — ingest,
+extract, retrieve, answer — takes 40–120s, which is why the runner supports sampling
+(`--sample`) and resumes.
 
 Open <http://localhost:3000>, scroll to **Live memory console**, then click
 `ingest 3 sessions` and run the four probes. The third session contradicts the first; the
@@ -208,17 +224,28 @@ cheaply. `s` is 266MB with ~50 sessions per question and is the headline benchma
 Then:
 
 ```bash
-export LONGMEMEVAL_PATH=data/longmemeval_s.json
+export LONGMEMEVAL_PATH=data/longmemeval_oracle.json
 
-# Small slice first — one instance ingests ~48 sessions
+# Small slice first — one instance ingests its whole haystack
 node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --limit 5
+
+# A subset that still looks like the split: --sample takes an even stride
+# through each question type, where --limit takes the first N (which on this
+# dataset is 130 consecutive temporal-reasoning rows).
+node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --sample 100 --no-judge \
+  --out results/oracle-sample.jsonl
+
+# Then grade in one pass. Splitting it matters locally: the judge is a
+# different model from the one under test, and Ollama keeps one model resident,
+# so judging inside each instance swaps models twice per question.
+node scripts/judge-run.mjs results/oracle-sample.jsonl
 
 # One question type
 node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --types knowledge-update
 
 # Full run. Streams to JSONL and resumes on re-invocation, which matters
 # because a 500-question run ingests ~24,000 sessions.
-node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --out results/s-full.jsonl
+node scripts/run-eval.mjs --dataset $LONGMEMEVAL_PATH --out results/oracle-full.jsonl
 ```
 
 Scoring: abstention instances (`question_id` ending `_abs`) are correct only if the system

@@ -21,7 +21,7 @@ export interface GraphPath {
   relationships: GraphRelationship[]
 }
 
-/** Column colour per label — the same red/black palette the console uses. */
+/** One colour per label, in the console's blue/black palette. */
 const LABEL_STYLE: Record<string, { fill: string; stroke: string; text: string }> = {
   Fact: { fill: "#F1F3FF", stroke: "#0001FC", text: "#0001FC" },
   Entity: { fill: "#FFFFFF", stroke: "#000000", text: "#000000" },

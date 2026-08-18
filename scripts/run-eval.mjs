@@ -245,17 +245,30 @@ for (const instance of pending) {
   const startedAt = Date.now()
 
   try {
-    const res = await fetch(`${args.base}/api/eval`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        datasetPath: args.dataset,
-        questionIds: [instance.question_id],
-        useJudge: !args.noJudge,
-        concurrency: args.concurrency,
-        tag: args.tag,
-      }),
-    })
+    // One retry, because a slow instance can outlive fetch's 300s header
+    // timeout on a loaded machine and come back as a bare "fetch failed". The
+    // instance is idempotent — its writes are MERGEs under its own namespace —
+    // so re-running it costs time and nothing else.
+    let res
+    for (let attempt = 1; ; attempt++) {
+      try {
+        res = await fetch(`${args.base}/api/eval`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            datasetPath: args.dataset,
+            questionIds: [instance.question_id],
+            useJudge: !args.noJudge,
+            concurrency: args.concurrency,
+            tag: args.tag,
+          }),
+        })
+        break
+      } catch (error) {
+        if (attempt >= 2) throw error
+        console.log(`${label} transport error (${error.message}) — retrying once`)
+      }
+    }
 
     if (!res.ok) {
       console.log(`${label} HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`)

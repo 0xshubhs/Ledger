@@ -144,6 +144,131 @@ reverse-dependency closure work.
 `algo.SPpaths` with `YIELD path, pathWeight, pathCost` returns the exact
 explanation path (weight 3 for the 3-hop chain above).
 
+### `relDirection: 'incoming'` — and why it matters
+
+Accepted values are exactly `'incoming'`, `'outgoing'`, `'both'`; anything else
+is a parse error. `'incoming'` walks edges strictly against their stored
+direction, which is what a reverse-dependency closure needs. `'both'` also finds
+dependents, but from each one it walks back *down* into that dependent's own
+dependencies, so the traversal fans out over the whole graph — at `maxLen: 6` on
+a 3,000-version graph it died with `client_cursor_buffer_bytes rejected by
+admission control: actual 67109502 exceeds limit 67108864`.
+
+### `pathCount` is capped at 1024, silently
+
+Measured on one vertex, same query, only `pathCount` varying:
+
+| requested | returned |
+|---|---|
+| 100 | 100 |
+| 1024 | 1024 |
+| 2000 | **1024** |
+| 5000 | **1024** |
+
+Above 100,000 the request is rejected outright (`native_path_count rejected by
+admission control: actual 200000 exceeds limit 100000`), which reads as though
+any value below that is honoured. It is not. Nothing in the response marks the
+result as truncated — 1024 paths look exactly like a complete answer.
+
+Consequence for any traversal that has to be exhaustive: one path call cannot be
+the answer. A caller that needs completeness has to treat exactly 1024 paths as
+truncated and re-expand a level at a time — `multiHopFromEntity` in
+`src/lib/memory.ts` is explicitly an exploration aid rather than an exhaustive
+one for this reason.
+
+## Query planning: `WHERE n.id = $x` scans, `{id: $x}` seeks
+
+The single biggest performance finding here, and it is invisible in the query
+text. Binding a vertex by id inside the pattern hits the id index; the same
+predicate in a `WHERE` clause does not, and the engine falls back to scanning
+the label.
+
+Measured on the same 3,000-version graph, same results returned:
+
+| query | time |
+|---|---|
+| `MATCH (a:PackageVersion)-[:RESOLVES_TO]->(b:PackageVersion) WHERE b.id = $id` | 26.6s |
+| `MATCH (dep:PackageVersion {id: $id})<-[:RESOLVES_TO]-(dependent:PackageVersion)` | 2.3s |
+| `CALL algo.SSpaths({sourceNode: $id, ..., maxLen: 1})` | 0.086s |
+
+The same holds for a chained multi-hop read (748 rows returned either way):
+
+| query | time |
+|---|---|
+| `MATCH (a:A)-[...]->(d) WHERE a.id = $id` | 41.6s |
+| `MATCH (a:A {id: $id})-[...]->(d)` | 3.0s |
+
+The fact queries in `src/lib/memory.ts` filter on `f.user_id`, which is a
+property and not the vertex id, so no seek is available to them either way —
+but any lookup that *does* have an id should put it in the pattern.
+
+So: bind ids in the pattern, and prefer a native path procedure over a pattern
+match when what you want is a neighbourhood. Reverse arrows (`<-[:REL]-`) parse
+and work.
+
+The scanning form does not merely get slow — past a certain graph size it stops
+returning at all: `408 query_timeout: client_query_runtime exceeded query timeout
+after 120000 ms` (the node's `GRAPH_MAX_QUERY_RUNTIME_MS`). Same query, same
+data, id moved into the pattern: hundreds of milliseconds.
+
+## Write cost grows with total graph size
+
+There is no way to create a standalone vertex except the unlabeled
+`UNWIND $rows AS row MERGE (n {id: row.vertex}) SET n:Label, ...` form, and that
+form appears to cost more as the graph grows — the label that would narrow it is
+applied by the `SET`, after the `MERGE` has already matched.
+
+Measured with the same two-message write, same client, same code:
+
+| graph | write time |
+|---|---|
+| empty node | **93ms** |
+| node holding ~1.5M vertices from another workload | **6,258ms** |
+
+That is a 67x difference on a write whose own payload never changed. Two
+workloads sharing one graph do not just compete for CPU; the larger one taxes
+every write the smaller one makes. Give an ingest-heavy job its own graph-node.
+
+## Concurrency
+
+The node is not the serial bottleneck it looks like from one connection.
+Single-hop expansions, warm:
+
+| in flight | throughput |
+|---|---|
+| 1 | 27/s |
+| 8 | 857/s |
+| 24 | 1171/s |
+| 48 | 1500/s |
+
+## Admission control
+
+Several limits are enforced per statement and reported as
+`<limit_name> rejected by admission control: actual N exceeds limit M`:
+
+| limit | value | what trips it |
+|---|---|---|
+| `native_path_count` | 100,000 | `pathCount` above 100k on a path procedure |
+| `client_cursor_buffer_bytes` | 67,108,864 | a deep/wide traversal's result set |
+| `delete_vertex_scan_relationships` | 1,000,000 | `DETACH DELETE` on a graph with ~1M edges |
+
+The last one is the surprising one: `DETACH DELETE` appears to scan relationships
+graph-wide rather than per vertex, so a batch that deletes fine on a small graph
+fails on a large one no matter how few vertices it names. Emptying a big graph is
+therefore not a cheap operation — plan for namespacing a new run instead of
+clearing the old one.
+
+There is also a runtime ceiling, `GRAPH_MAX_QUERY_RUNTIME_MS` (120s by default),
+returned as `408 query_timeout`.
+
+## Deletes
+
+`MATCH (n {id: $x}) DELETE n`, `DETACH DELETE`, `REMOVE n:Label` and the
+`UNWIND $rows AS row MATCH (n {id: row.vertex}) DETACH DELETE n` batch form all
+parse and execute — useful for taking a test namespace back out of a shared
+graph, since nothing here deletes facts in normal operation (a superseded fact
+is kept, not removed).
+
 ## Consistency
 
 `"consistency": "causal" | "strong"` in the request body. Every response carries
