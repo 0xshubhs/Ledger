@@ -149,27 +149,68 @@ interface WireResponse {
  * Each call is one bounded server operation — HydraDB accepts one statement
  * per request and commits it durably before returning.
  */
+/**
+ * How many times a request is retried, and how long it waits between attempts.
+ *
+ * Sustained ingestion trips a real failure in the storage layer: under a few
+ * hundred writes a second the node's SlateDB manifest writer panics with
+ * `InvalidTransactionalObjectState`, in-flight statements come back as a bare
+ * `500 internal query execution error`, and the node then promotes a new writer
+ * and carries on. Observed at ~85,000 vertices while batch-loading; the real
+ * cause is only visible in the container log, and the request that fails is
+ * whichever one happened to be in flight.
+ *
+ * Retrying is safe here because every statement this client issues is
+ * idempotent by construction: vertices and edges are keyed by a deterministic
+ * id and written with MERGE, and reads have no effect at all. See
+ * graphwrite.ts.
+ */
+const MAX_ATTEMPTS = 5
+const BASE_BACKOFF_MS = 250
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function runQuery<T = Record<string, unknown>>(
   query: string,
   options: HydraQueryOptions = {}
 ): Promise<HydraQueryResult<T>> {
   const { params, consistency = "causal", bookmark, cellId = DEFAULT_CELL } = options
 
-  const res = await fetch(`${QUERY_URL}/v1/graphs/${GRAPH}/query`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${authToken()}`,
-      "X-Graph-Namespace": NAMESPACE,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      cell_id: cellId,
-      query,
-      ...(params ? { parameters: params } : {}),
-      consistency,
-      ...(bookmark ? { bookmark } : {}),
-    }),
+  const requestBody = JSON.stringify({
+    cell_id: cellId,
+    query,
+    ...(params ? { parameters: params } : {}),
+    consistency,
+    ...(bookmark ? { bookmark } : {}),
   })
+
+  let res: Response
+  let attempt = 0
+  for (;;) {
+    attempt++
+    try {
+      res = await fetch(`${QUERY_URL}/v1/graphs/${GRAPH}/query`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${authToken()}`,
+          "X-Graph-Namespace": NAMESPACE,
+          "Content-Type": "application/json",
+        },
+        body: requestBody,
+      })
+    } catch (error) {
+      // The node restarts its writer after the panic above, so the socket can
+      // drop mid-request. That is transient; a 4xx is not.
+      if (attempt >= MAX_ATTEMPTS) throw error
+      await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1))
+      continue
+    }
+
+    if (res.status < 500 || attempt >= MAX_ATTEMPTS) break
+    await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1))
+  }
 
   const text = await res.text()
   let body: unknown
