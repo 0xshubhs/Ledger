@@ -4,7 +4,14 @@ import { Brain } from "lucide-react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 
-const NAV_LINKS = ["Docs", "Pricing", "Benchmarks", "GitHub"]
+// Every entry goes somewhere real: an anchor on this page, or the repo.
+// The template shipped these as href="#", which is a link that lies.
+const NAV_LINKS: { label: string; href: string; external?: boolean }[] = [
+  { label: "How it works", href: "#how-it-works" },
+  { label: "Benchmarks", href: "#benchmarks" },
+  { label: "Console", href: "#console" },
+  { label: "Docs", href: "https://github.com/0xshubhs/hydradb1#readme", external: true },
+]
 
 export function Navbar() {
   return (
@@ -38,11 +45,12 @@ export function Navbar() {
           >
             {NAV_LINKS.map((link) => (
               <Link
-                key={link}
-                href="#"
+                key={link.label}
+                href={link.href}
+                {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
                 className="text-[10px] font-mono tracking-widest uppercase text-foreground/50 hover:text-foreground transition-colors"
               >
-                {link}
+                {link.label}
               </Link>
             ))}
           </motion.div>
@@ -55,16 +63,18 @@ export function Navbar() {
             className="flex items-center gap-3"
           >
             <Link
-              href="/login"
+              href="https://github.com/0xshubhs/hydradb1"
+              target="_blank"
+              rel="noreferrer"
               className="hidden sm:block text-[10px] font-mono tracking-widest uppercase text-foreground/50 hover:text-foreground transition-colors"
             >
-              Log in
+              Source
             </Link>
             <Link
-              href="/signup"
+              href="#console"
               className="text-[10px] font-mono tracking-widest uppercase px-5 py-2.5 bg-[#0001FC] text-white hover:opacity-80 transition-opacity font-bold"
             >
-              Start Free
+              Run the demo
             </Link>
           </motion.div>
         </div>

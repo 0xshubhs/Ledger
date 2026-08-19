@@ -40,7 +40,7 @@ const STEP_STYLES = [
 
 export function HowItWorks() {
   return (
-    <section className="w-full px-6 py-20 lg:px-12">
+    <section id="how-it-works" className="w-full px-6 py-20 lg:px-12">
       {/* Section label */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}

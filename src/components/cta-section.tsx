@@ -34,7 +34,7 @@ export function CtaSection() {
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">
             <Link
-              href="/signup"
+              href="#console"
               className="group flex items-center gap-0 bg-white text-[#0001FC] text-sm font-mono font-black tracking-widest uppercase hover:opacity-90 transition-opacity"
             >
               <span className="flex items-center justify-center w-12 h-12 bg-foreground">
@@ -49,7 +49,9 @@ export function CtaSection() {
               <span className="px-8 py-3">Get Free API Key</span>
             </Link>
             <Link
-              href="/docs"
+              href="https://github.com/0xshubhs/hydradb1#readme"
+            target="_blank"
+            rel="noreferrer"
               className="text-[11px] font-mono tracking-widest uppercase text-white/50 hover:text-white transition-colors border border-white/20 px-8 py-3.5"
             >
               Read the Docs

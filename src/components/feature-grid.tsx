@@ -52,7 +52,7 @@ const FEATURES = [
 
 export function FeatureGrid() {
   return (
-    <section className="w-full px-6 py-20 lg:px-12">
+    <section id="features" className="w-full px-6 py-20 lg:px-12">
       {/* Section label */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}

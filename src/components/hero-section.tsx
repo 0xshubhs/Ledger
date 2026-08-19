@@ -159,13 +159,15 @@ export function HeroSection() {
                 <ArrowRight size={20} strokeWidth={3} className="text-white" />
               </motion.span>
             </span>
-            <Link href="/signup" className="px-8 py-3 font-bold tracking-[0.2em]">
+            <Link href="#console" className="px-8 py-3 font-bold tracking-[0.2em]">
               Get Free API Key
             </Link>
           </button>
 
           <Link
-            href="/docs"
+            href="https://github.com/0xshubhs/hydradb1#readme"
+            target="_blank"
+            rel="noreferrer"
             className="flex items-center gap-2 text-[11px] font-mono tracking-widest uppercase text-white/60 hover:text-white transition-colors border border-white/25 px-6 py-3.5"
           >
             <BookOpen size={13} />
@@ -173,7 +175,7 @@ export function HeroSection() {
           </Link>
 
           <Link
-            href="https://github.com"
+            href="https://github.com/0xshubhs/hydradb1"
             className="flex items-center gap-2 text-[11px] font-mono tracking-widest uppercase text-white/60 hover:text-white transition-colors border border-white/25 px-6 py-3.5"
           >
             <Code2 size={13} />

@@ -63,7 +63,7 @@ const CATEGORY_ROWS = [
 
 export function AboutSection() {
   return (
-    <section className="w-full px-6 py-20 lg:px-12">
+    <section id="benchmarks" className="w-full px-6 py-20 lg:px-12">
       {/* Section label */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}

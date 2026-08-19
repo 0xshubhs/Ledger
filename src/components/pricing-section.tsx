@@ -60,7 +60,7 @@ const PLANS = [
 
 export function PricingSection() {
   return (
-    <section className="w-full px-6 py-20 lg:px-20">
+    <section id="pricing" className="w-full px-6 py-20 lg:px-20">
       {/* Section label */}
       <motion.div
         initial={{ opacity: 0, x: -20 }}
@@ -142,7 +142,7 @@ export function PricingSection() {
 
             {/* CTA */}
             <Link
-              href="/signup"
+              href="#console"
               className={`group flex items-center justify-between border-2 px-5 py-3 text-[10px] font-mono tracking-widest uppercase font-black transition-opacity hover:opacity-80 ${
                 plan.highlight
                   ? "border-background text-background"
@@ -171,7 +171,9 @@ export function PricingSection() {
           </p>
         </div>
         <Link
-          href="/enterprise"
+          href="https://github.com/0xshubhs/hydradb1/blob/main/completion.md"
+          target="_blank"
+          rel="noreferrer"
           className="flex items-center gap-2 text-[10px] font-mono tracking-widest uppercase text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
         >
           Book a call <ArrowRight size={11} strokeWidth={2} />
