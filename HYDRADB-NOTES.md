@@ -249,10 +249,19 @@ Several limits are enforced per statement and reported as
 | limit | value | what trips it |
 |---|---|---|
 | `native_path_count` | 100,000 | `pathCount` above 100k on a path procedure |
+| `native_path_edges` | 1,000,000 | a path procedure whose traversal would touch >1M edges |
 | `client_cursor_buffer_bytes` | 67,108,864 | a deep/wide traversal's result set |
 | `delete_vertex_scan_relationships` | 1,000,000 | `DETACH DELETE` on a graph with ~1M edges |
 
-The last one is the surprising one: `DETACH DELETE` appears to scan relationships
+`native_path_edges` is the one that ends the "one traversal answers it" idea
+outright. On an 84,163-version graph, the single `algo.SSpaths` call with
+`relDirection: 'both'` does not truncate — it is refused:
+`native_path_edges rejected by admission control: actual 1000034 exceeds limit
+1000000`. The same graph answers the lockfile-pattern query in 124ms.
+Expanding one hop at a time with `relDirection: 'incoming'` stays far under the
+limit, which is why the closure is enumerated rather than asked for in one call.
+
+The `delete_vertex_scan_edges` one is the other surprise: `DETACH DELETE` appears to scan relationships
 graph-wide rather than per vertex, so a batch that deletes fine on a small graph
 fails on a large one no matter how few vertices it names. Emptying a big graph is
 therefore not a cheap operation — plan for namespacing a new run instead of

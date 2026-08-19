@@ -32,21 +32,23 @@ function ScrambleText({ text, className }: { text: string; className?: string })
 }
 
 const STATS = [
-  { label: "Recall Accuracy", value: "—", sub: "LongMemEval-S, run pending", highlight: true },
+  { label: "Knowledge Update", value: "81.3%", sub: "LongMemEval-oracle, 16 scored", highlight: true },
   { label: "Fact Lookup", value: "3ms",   sub: "current-truth read, measured",   highlight: false },
   { label: "Supersede Write",      value: "48ms",     sub: "close old + link new", highlight: false },
   { label: "Vector Calls",         value: "0",       sub: "graph-native retrieval", highlight: false },
 ]
 
-// Baselines are the figures the LongMemEval and Zep papers report. track3's own
-// row is intentionally blank: the harness is built (src/lib/longmemeval.ts,
-// scripts/run-eval.mjs) but the run has not been executed, and publishing a
-// number we have not measured would make every other number here worthless.
+// track3's row is a *partial* run and is labelled as one: 16 knowledge-update
+// instances of the oracle split, scored locally. The other rows are overall
+// LongMemEval-S figures as their authors report them, on all six question types
+// and a harder split. They are not the same measurement and the chart says so —
+// a partial number dressed as a total would make every other number here
+// worthless.
 const BENCHMARK_ROWS = [
-  { name: "track3 (this build)", score: 0,     display: "run pending", leader: true },
-  { name: "Zep",               score: 71.20, display: "71.20% (reported)", leader: false },
-  { name: "Full Context GPT-4",score: 60.20, display: "60.20% (reported)", leader: false },
-  { name: "mem0 OSS",          score: 29.07, display: "29.07% (reported)", leader: false },
+  { name: "track3 (partial)",  score: 81.30, display: "81.3% — 16 knowledge-update, oracle", leader: true },
+  { name: "Zep",               score: 71.20, display: "71.20% overall (reported, S)", leader: false },
+  { name: "Full Context GPT-4",score: 60.20, display: "60.20% overall (reported, S)", leader: false },
+  { name: "mem0 OSS",          score: 29.07, display: "29.07% overall (reported, S)", leader: false },
 ]
 
 // Capability comparison, not a score comparison. Every track3 cell here is a
@@ -91,7 +93,7 @@ export function AboutSection() {
           <span className="text-[#0001FC]">We publish the numbers.</span>
         </h2>
         <p className="text-sm font-mono text-muted-foreground max-w-xl">
-          Evaluated on LongMemEval-S — the industry standard for long-term agent memory.
+          Scored on LongMemEval, locally, with the run and its limits stated rather than rounded off.
           Updated monthly. Methodology is open.
         </p>
       </motion.div>
@@ -142,7 +144,7 @@ export function AboutSection() {
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-3 border-b-2 border-foreground bg-foreground">
             <span className="text-[10px] tracking-widest uppercase text-white font-mono font-bold">
-              LongMemEval-S Overall
+              LongMemEval — not like for like
             </span>
             <span className="text-[10px] tracking-widest uppercase text-white/50 font-mono">March 2026</span>
           </div>
@@ -240,7 +242,9 @@ export function AboutSection() {
         transition={{ delay: 0.6, duration: 0.5 }}
         className="mt-3 text-[10px] font-mono text-muted-foreground text-right"
       >
-        Source: LongMemEval-S benchmark · Scores updated monthly · Open methodology
+        track3: 16 knowledge-update instances of the oracle split, qwen3.5:4b local, judged by
+        qwen2.5:7b · others: overall LongMemEval-S as reported by their authors · reproduce with
+        scripts/run-eval.mjs
       </motion.p>
     </section>
   )

@@ -3,10 +3,43 @@
 Tracks what's actually built vs. what plan.md describes. Updated as work lands.
 
 **Status: the graph layer is complete and verified end-to-end against a live HydraDB
-graph-node, the LongMemEval harness is verified against both real official splits, and the
-LLM runs locally on a 6GB laptop GPU — no API key required.** The scored benchmark run has
-not been executed yet, but it is now a matter of wall-clock (~1.6h for the oracle split)
-rather than a blocker.
+graph-node, the LLM runs locally with no API key, and LongMemEval is now being scored
+rather than merely parsed.** A partial run exists — see *Benchmark* below — and the full
+100-instance stratified sample resumes with one command.
+
+## Benchmark
+
+**LongMemEval oracle split · 16 instances scored · all `knowledge-update` · 13 correct
+(81.3%)**, graded by string match first and then `qwen2.5:7b` as an LLM judge — a different
+model from the `qwen3.5-16k:4b` under test, so the system is not marking its own homework.
+
+| | |
+|---|---|
+| Instances scored | 16 of a 100-instance stratified sample |
+| Correct | **13 (81.3%)** |
+| Session-level recall | **16/16** — every answer drew on a session the gold labels call evidence |
+| Facts retrieved per question | 9.3 average |
+| Ingest per instance | 64.9s (extraction-bound: one local LLM call per session) |
+| Query per instance | 16.5s (plan + retrieve + synthesise) |
+
+Sampling walks each question type in turn, so these 16 are all knowledge-update — the type
+this data model exists for, and the one where "which of these two statements is still true"
+decides the answer. The remaining 84 instances cover the other five types and the abstention
+set; the run streams to JSONL and resumes, so finishing it is `node scripts/run-eval.mjs
+--dataset data/longmemeval_oracle.json --sample 100 --no-judge --tag v1 --out
+results/oracle-sample.jsonl` followed by `node scripts/judge-run.mjs`.
+
+**What the three misses were**, since they say more than the score:
+
+- *"How often do I attend yoga classes?"* — answered "twice a week" where a later session
+  said three. Both facts are in the graph; the answer layer took the wrong one.
+- *"What was my previous frequent flyer status before I got the current one?"* — abstained.
+  The question asks for superseded truth, which the graph holds, but the planner did not
+  set `wantsHistory`.
+- *"What vehicle model am I currently working on?"* — named a car from an earlier session.
+
+All three are the same shape: the fact is present, and a 4-billion-parameter model picked
+the wrong row out of nine. None of them is a retrieval miss — session recall was 16/16.
 
 ## Verified live against a running graph-node
 
@@ -50,7 +83,18 @@ All of the following was executed, not inferred from documentation:
   | + prompt/parser fixes | 6.2s | **24** | 2/8 | **1.6 h** |
 
   The full S split projects to ~43h, so the oracle split is the realistic local target.
-- `npx tsc --noEmit` clean · `npm run lint` clean · `npm run build` clean.
+- **Local inference on an Apple M3** (16GB, `qwen3.5-16k:4b` through Ollama), measured with
+  `scripts/bench-llm.mjs` on real dataset sessions: **30.4s mean per session, 6.3 facts per
+  session, 1 of 8 sessions empty**. Slower per call than the 4050 numbers above and better
+  per call — the prompt work moved after those measurements. Ollama serves this model with
+  a single slot (`-np 1`), so concurrent extraction requests queue rather than overlap.
+- **A graph-node per project.** Vertex writes get slower as the *whole* graph grows, not
+  just this project's slice: the only executable vertex form is an unlabeled
+  `MERGE (n {id})` with the label applied by a following `SET`, so there is no label index
+  to narrow it. The same two-message ingest measured **93ms on an empty node** and
+  **6,258ms** on one also holding ~1.5M vertices from the other track. The benchmark run
+  therefore has its own node.
+- `npx tsc --noEmit` clean · `npm run lint` clean.
 
 ## Done
 
@@ -90,6 +134,30 @@ All of the following was executed, not inferred from documentation:
       directly contradicted plan.md's deliberate no-vectors thesis. Replaced with the real
       differentiators and measured numbers; the benchmark row is left blank.
 
+### Bugs found by running the benchmark
+
+- **Retrieval raced its tiers and returned the first that matched.** An entity lookup that
+  hit returned two to five facts and short-circuited the working set, so
+  "which did I attend first, the workshop or the webinar" was answered from one of the two
+  events. Every early-returned entity hit on temporal-reasoning abstained. The tiers now
+  union.
+- **The answer layer could not see time.** Facts were rendered with a session index and
+  nothing else, which makes ordering questions unanswerable in principle — and 133 of the
+  500 questions are temporal. They now carry the `valid_from` date, stamped from the
+  asserting turn.
+- **A triple loses the answer.** LongMemEval grades the detail ("GPS system not functioning
+  correctly"), which survives extraction as `car_issue: GPS` at best. Retrieved facts are
+  now rendered with the sentence that asserted them, one hop away across `ASSERTS`.
+- **Updates were not updates.** Supersede is keyed on `(subject, predicate)`, and nothing
+  made the extractor reuse a relation name across sessions — it wrote `ran_charity_5K_in`
+  in one and `has_personal_best_time` in the next, so both survived as current truth and
+  the answer layer picked whichever read closest to the question. Extraction is now primed
+  with the relation names already stored for that user. Verified: a session revising a time
+  now reports `factsSuperseded: 1` where it previously wrote an unrelated second fact.
+- **A slow instance killed the run.** `fetch` gives up on response headers after 300s, and
+  a loaded machine can push an instance past that; the runner logged "fetch failed" and
+  dropped the instance. It now retries once.
+
 ### Bugs found by running a local model
 
 - **Hybrid reasoning models silently produce nothing.** qwen3.5:4b spent all 800 completion
@@ -125,17 +193,19 @@ All of the following was executed, not inferred from documentation:
 
 ## Not done yet
 
-- [ ] **LongMemEval has not been run.** Still the top priority, but no longer blocked — it
-      runs locally now. The oracle split is ~1.6h of extraction; the S split is ~43h.
-      Recommended order: `--limit 5` to sanity-check the loop, then the full oracle split,
-      then `--types knowledge-update` on S (78 instances, where this data model should win
-      hardest). Set `LLM_JUDGE_MODEL` to something other than the model under test first —
-      right now the system would be marking its own homework.
-- [ ] **Extraction reliability is ~75%.** 2 of 8 sampled sessions still yield no facts.
-      Some of that is legitimate (LongMemEval haystacks are deliberately padded with
-      sessions containing nothing durable), but the largest sampled session is a genuine
-      miss and has not been diagnosed. Worth an hour of prompt work before a full run,
-      since extraction quality caps the achievable accuracy.
+- [ ] **The benchmark run is 16 of 100 instances.** It is running and resumable rather than
+      blocked; what is missing is wall-clock, roughly 80s per instance on this hardware. The
+      remaining 84 cover multi-session, temporal-reasoning, the three single-session types
+      and the abstention set — and abstention in particular is untested by the 16 scored so
+      far, which is the claim this design leans on hardest.
+- [ ] **The answer layer picks the wrong row when the facts are close together.** All three
+      benchmark misses are this, not retrieval: session recall was 16/16 and the correct
+      fact was in the retrieved set every time. A larger model would likely fix it, which
+      makes it a model-capability ceiling rather than a design flaw — but the prompt could
+      also rank facts by relevance rather than handing over nine in date order.
+- [ ] **`wantsHistory` is decided by a single planner call and gets it wrong.** One miss was
+      a question explicitly about superseded truth, which the graph holds and the answer
+      layer never saw, because the plan asked for current facts.
 - [ ] **A 4B model is a real quality ceiling.** `qwen3.5:9b` (6.6GB) would spill past 6GB
       VRAM but is worth testing on a small slice; the 27B models named as candidates need
       ~17GB and would run at CPU-bound speeds, which 25,112 calls cannot absorb.

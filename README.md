@@ -41,12 +41,16 @@ LongMemEval-S haystack — 66 sessions, 564 turns, ~121K tokens — ingests in *
 ~400 messages/sec**. The full 25,112-session run is ~9 minutes of graph writes, so the
 graph is not the bottleneck; the 25,112 extraction calls are.
 
-**LongMemEval accuracy: not yet measured.** The harness is built and verified against both
-official splits (`src/lib/longmemeval.ts`, `src/lib/evalrunner.ts`, `scripts/run-eval.mjs`)
-— 500 instances parsed, zero unparseable timestamps, all six question types and the 30
-abstention instances detected — but the scored run needs an API key and budget and has not
-been executed. The landing page's benchmark row is deliberately blank rather than filled
-with a number we did not produce.
+**LongMemEval, partial: 13 of 16 knowledge-update instances correct (81.3%)** on the oracle
+split, everything local — `qwen3.5-16k:4b` answering, `qwen2.5:7b` judging, no API key.
+Session-level recall was 16/16: every answer drew on a session the gold labels call
+evidence, and all three misses were the answer layer choosing the wrong fact out of nine
+rather than retrieval failing to find it.
+
+That is 16 of a 100-instance stratified sample, and sampling walks the question types in
+turn, so the other five types and the abstention set are not in this number. The run streams
+to JSONL and resumes — see *Running LongMemEval* below. The landing page reports exactly
+this scope rather than extrapolating it.
 
 ## Graph model
 
