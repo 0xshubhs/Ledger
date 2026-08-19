@@ -20,9 +20,12 @@ const STATS = [
   { value: "6",     label: "Question types", sub: "LongMemEval harness wired" },
 ]
 
+// What this is actually built on and evaluated against. The template listed ten
+// agent frameworks, none of which are integrated — the interface is HTTP + JSON,
+// which is exactly why it does not need to name a framework at all.
 const TECH_TAGS = [
-  "LangChain", "OpenAI", "Anthropic", "CrewAI", "AutoGPT",
-  "LlamaIndex", "Vercel AI SDK", "n8n", "Zapier", "FastAPI",
+  "HydraDB", "OpenCypher", "LongMemEval", "Ollama",
+  "llama.cpp", "Claude API", "HTTP + JSON",
 ]
 
 const FEATURES = [

@@ -57,7 +57,7 @@ export function Footer() {
             <div className="flex flex-col gap-1.5">
               {[
                 "Temporal fact graph on HydraDB",
-                "Free tier — No credit card required",
+                "MIT licensed — run it yourself",
                 "BYOK — Your keys, your data",
               ].map((item) => (
                 <div key={item} className="flex items-center gap-2">

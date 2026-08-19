@@ -28,7 +28,7 @@ export function CtaSection() {
             <span className="text-white/40">Never forget.</span>
           </h2>
           <p className="text-sm font-mono text-white/60 max-w-lg mx-auto mb-10 leading-relaxed">
-            Connect your first agent in under two minutes. Free tier, no credit card.
+            Connect your first agent in under two minutes, against a graph-node running on your own machine.
             The memory layer your agents actually deserve.
           </p>
 

@@ -40,8 +40,8 @@ const FEATURES = [
   },
   {
     icon: Globe,
-    title: "Any Framework",
-    desc: "One API works with LangChain, CrewAI, OpenAI, Anthropic, Vercel AI SDK, and plain HTTP.",
+    title: "No SDK To Adopt",
+    desc: "Three JSON endpoints over HTTP — ingest a session, ask a question, read the stats. Nothing to install, no framework to marry, no embedding service in the loop.",
   },
   {
     icon: Layers,

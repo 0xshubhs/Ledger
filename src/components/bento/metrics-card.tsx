@@ -55,8 +55,8 @@ export function MetricsCard() {
       <div className="flex-1 flex flex-col justify-center gap-6 p-6">
         <ScrambleNumber target="3ms" label="Current-Truth Read" delay={500} />
         <ScrambleNumber target="48ms" label="Supersede Write" delay={800} />
-        <ScrambleNumber target="70%" label="Compression Rate" delay={1100} />
-        <ScrambleNumber target="5" label="Retrieval Channels" delay={1400} />
+        <ScrambleNumber target="81%" label="Knowledge-Update Acc." delay={1100} />
+        <ScrambleNumber target="0" label="Vector API Calls" delay={1400} />
       </div>
     </div>
   )
