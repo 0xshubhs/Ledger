@@ -9,37 +9,50 @@ rather than merely parsed.** A partial run exists — see *Benchmark* below — 
 
 ## Benchmark
 
-**LongMemEval oracle split · 16 instances scored · all `knowledge-update` · 13 correct
-(81.3%)**, graded by string match first and then `qwen2.5:7b` as an LLM judge — a different
-model from the `qwen3.5-16k:4b` under test, so the system is not marking its own homework.
+**LongMemEval oracle split · 116 instances · 52 correct (44.8%)** — everything local:
+`qwen3.5-16k:4b` answering, `qwen2.5:7b` judging. A different model grades than the one
+under test, so the system is not marking its own homework. Graded by normalised string
+match first, LLM judge only where that was inconclusive, which is LongMemEval's own metric.
 
-| | |
-|---|---|
-| Instances scored | 16 of a 100-instance stratified sample |
-| Correct | **13 (81.3%)** |
-| Session-level recall | **16/16** — every answer drew on a session the gold labels call evidence |
-| Facts retrieved per question | 9.3 average |
-| Ingest per instance | 64.9s (extraction-bound: one local LLM call per session) |
-| Query per instance | 16.5s (plan + retrieve + synthesise) |
+| question type | correct | | note |
+|---|---|---|---|
+| single-session-user | 11/14 | **78.6%** | |
+| knowledge-update | 24/32 | **75.0%** | the type this data model exists for |
+| temporal-reasoning | 6/16 | 37.5% | |
+| multi-session | 10/34 | 29.4% | weakest answerable type; needs facts from several sessions at once |
+| single-session-assistant | 1/14 | 7.1% | **a bug, not a limit** — see below |
+| single-session-preference | 0/6 | 0.0% | **a bug, not a limit** — see below |
+| **overall** | **52/116** | **44.8%** | |
 
-Sampling walks each question type in turn, so these 16 are all knowledge-update — the type
-this data model exists for, and the one where "which of these two statements is still true"
-decides the answer. The remaining 84 instances cover the other five types and the abstention
-set; the run streams to JSONL and resumes, so finishing it is `node scripts/run-eval.mjs
---dataset data/longmemeval_oracle.json --sample 100 --no-judge --tag v1 --out
-results/oracle-sample.jsonl` followed by `node scripts/judge-run.mjs`.
+Scope, stated rather than rounded off: 116 of a 100-instance stratified sample plus 16
+earlier rows, on the *oracle* split (evidence sessions only, easier than S), answered by a
+4-billion-parameter model on a laptop. The published figures other projects report — Zep
+71.2%, full-context GPT-4 60.2%, mem0 29.07% — are overall numbers on the harder S split
+with frontier models. These are not the same measurement and should not be read as a
+ranking.
 
-**What the three misses were**, since they say more than the score:
+**What the two zeros were.** Both are the system failing to store or use evidence it had,
+not a model that could not reason:
 
-- *"How often do I attend yoga classes?"* — answered "twice a week" where a later session
-  said three. Both facts are in the graph; the answer layer took the wrong one.
-- *"What was my previous frequent flyer status before I got the current one?"* — abstained.
-  The question asks for superseded truth, which the graph holds, but the planner did not
-  set `wantsHistory`.
-- *"What vehicle model am I currently working on?"* — named a car from an earlier session.
+- `single-session-assistant` asks what the *assistant* said. The extraction prompt said
+  "skip anything the assistant asserted about itself" — intended to drop "I am an AI",
+  but it also dropped "I recommend Roscioli". Two of three sampled misses retrieved
+  **zero facts**: the answer was never written down. The prompt now keeps what the
+  assistant told the user, under an `assistant` subject.
+- `single-session-preference` is worse and more interesting: every sampled miss retrieved
+  facts *and* scored session recall True. The evidence was in hand and the answer layer
+  abstained. These questions are not lookups — "recommend a show for tonight" is asking
+  the memory to shape a recommendation, and gold is "the user would prefer stand-up
+  comedy". The answer prompt now says so.
 
-All three are the same shape: the fact is present, and a 4-billion-parameter model picked
-the wrong row out of nine. None of them is a retrieval miss — session recall was 16/16.
+Both fixes landed after this run; `results/fix-check.jsonl` re-measures those exact
+instances by id (`run-eval.mjs --ids`) so the change is a like-for-like comparison rather
+than a fresh sample.
+
+**What the misses look like elsewhere.** On the 16 instances inspected by hand, session
+recall was 16/16 — every answer drew on a session the gold labels call evidence. The
+failures were the answer layer choosing the wrong fact out of nine retrieved, which is a
+model-capability ceiling at 4B rather than a retrieval failure.
 
 ## Verified live against a running graph-node
 

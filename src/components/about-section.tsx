@@ -32,7 +32,7 @@ function ScrambleText({ text, className }: { text: string; className?: string })
 }
 
 const STATS = [
-  { label: "Knowledge Update", value: "81.3%", sub: "LongMemEval-oracle, 16 scored", highlight: true },
+  { label: "Knowledge Update", value: "75.0%", sub: "LongMemEval-oracle, 32 scored", highlight: true },
   { label: "Fact Lookup", value: "3ms",   sub: "current-truth read, measured",   highlight: false },
   { label: "Supersede Write",      value: "48ms",     sub: "close old + link new", highlight: false },
   { label: "Vector Calls",         value: "0",       sub: "graph-native retrieval", highlight: false },
@@ -45,7 +45,7 @@ const STATS = [
 // a partial number dressed as a total would make every other number here
 // worthless.
 const BENCHMARK_ROWS = [
-  { name: "track3 (partial)",  score: 81.30, display: "81.3% — 16 knowledge-update, oracle", leader: true },
+  { name: "track3 (oracle)",   score: 44.80, display: "44.8% overall — 116 instances, oracle split, 4B local", leader: true },
   { name: "Zep",               score: 71.20, display: "71.20% overall (reported, S)", leader: false },
   { name: "Full Context GPT-4",score: 60.20, display: "60.20% overall (reported, S)", leader: false },
   { name: "mem0 OSS",          score: 29.07, display: "29.07% overall (reported, S)", leader: false },
@@ -242,9 +242,9 @@ export function AboutSection() {
         transition={{ delay: 0.6, duration: 0.5 }}
         className="mt-3 text-[10px] font-mono text-muted-foreground text-right"
       >
-        track3: 16 knowledge-update instances of the oracle split, qwen3.5:4b local, judged by
-        qwen2.5:7b · others: overall LongMemEval-S as reported by their authors · reproduce with
-        scripts/run-eval.mjs
+        track3: 116 instances of the oracle split across all six question types, qwen3.5:4b
+        local, judged by qwen2.5:7b · others: overall LongMemEval-S as reported by their authors,
+        on a harder split with frontier models · reproduce with scripts/run-eval.mjs
       </motion.p>
     </section>
   )

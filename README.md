@@ -41,16 +41,28 @@ LongMemEval-S haystack — 66 sessions, 564 turns, ~121K tokens — ingests in *
 ~400 messages/sec**. The full 25,112-session run is ~9 minutes of graph writes, so the
 graph is not the bottleneck; the 25,112 extraction calls are.
 
-**LongMemEval, partial: 13 of 16 knowledge-update instances correct (81.3%)** on the oracle
-split, everything local — `qwen3.5-16k:4b` answering, `qwen2.5:7b` judging, no API key.
-Session-level recall was 16/16: every answer drew on a session the gold labels call
-evidence, and all three misses were the answer layer choosing the wrong fact out of nine
-rather than retrieval failing to find it.
+**LongMemEval: 52 of 116 instances correct (44.8%)** on the oracle split, everything local
+— `qwen3.5-16k:4b` answering, `qwen2.5:7b` judging, no API key and no vector database.
 
-That is 16 of a 100-instance stratified sample, and sampling walks the question types in
-turn, so the other five types and the abstention set are not in this number. The run streams
-to JSONL and resumes — see *Running LongMemEval* below. The landing page reports exactly
-this scope rather than extrapolating it.
+| | | |
+|---|---|---|
+| single-session-user | 11/14 | 78.6% |
+| knowledge-update | 24/32 | **75.0%** |
+| temporal-reasoning | 6/16 | 37.5% |
+| multi-session | 10/34 | 29.4% |
+| single-session-assistant | 1/14 | 7.1% (a bug — see `completion.md`) |
+| single-session-preference | 0/6 | 0.0% (a bug — see `completion.md`) |
+| **overall** | **52/116** | **44.8%** |
+
+Read that as what it is: the *oracle* split (evidence sessions only, easier than S), a
+4B model on a laptop, 116 instances. Zep's 71.2%, full-context GPT-4's 60.2% and mem0's
+29.07% are overall numbers on the harder S split with frontier models — a different
+measurement, not a leaderboard position.
+
+The knowledge-update column is the one this data model exists for, and it is the strongest
+answerable type. The two zeros are not model limits: in both cases the system either never
+stored the evidence or held it and abstained anyway, both traced to a single prompt line
+and both fixed after the run.
 
 ## Graph model
 

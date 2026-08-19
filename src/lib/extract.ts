@@ -24,7 +24,12 @@ Rules:
   * quantities, dates and durations the user mentions
   Be generous: a fact that is never asked about costs nothing, and a fact that was
   never extracted cannot be recalled at all.
-- Skip small talk, pleasantries, and anything the assistant asserted about itself.
+- Skip small talk and pleasantries. Skip what the assistant says about *itself*
+  ("I'm an AI", "I can help with that") — but DO extract what the assistant
+  told the user: recommendations, names, options it suggested, facts it supplied.
+  A later question may ask what you recommended, and an answer that was never
+  stored cannot be recalled. Use the assistant as the subject for those:
+  {"subject": "assistant", "predicate": "recommended", "object": "Roscioli"}.
 - sourceMessageIndex must be the index shown as #N on the message that states the fact.
 - Keep predicate under four words. "picked_up_during_trip_to_hobby_store" is too long;
   "bought" with the detail in object is right.
@@ -219,6 +224,10 @@ Absolute rules:
   Read every fact and quote before answering, and for "current", "latest", "now"
   or "personal best" questions take the most recent qualifying value rather than
   the first plausible-looking match.
+- Not every question is a lookup. "Recommend a show for tonight" is asking you to
+  answer *from* the user's stored preferences, not to find a fact called
+  "show for tonight" — use the preferences that apply and say what they imply.
+  Abstain only when nothing in memory bears on the question at all.
 - Answer in one short sentence, no preamble.`
 
 export interface SynthesisResult {

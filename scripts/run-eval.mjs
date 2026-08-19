@@ -32,6 +32,7 @@ function parseArgs(argv) {
     onlyAbstention: false,
     sample: null,
     tag: null,
+    ids: null,
   }
   for (let i = 2; i < argv.length; i++) {
     const arg = argv[i]
@@ -46,6 +47,7 @@ function parseArgs(argv) {
     else if (arg === "--only-abstention") args.onlyAbstention = true
     else if (arg === "--sample") args.sample = Number(next())
     else if (arg === "--tag") args.tag = next()
+    else if (arg === "--ids") args.ids = next().split(",")
     else {
       console.error(`Unknown argument: ${arg}`)
       process.exit(1)
@@ -194,6 +196,12 @@ if (args.types) {
 }
 if (args.onlyAbstention) {
   pending = pending.filter((i) => i.question_id.endsWith("_abs"))
+}
+// Re-measure an exact set — the instances a previous run already scored, so a
+// prompt change can be compared like for like instead of against a fresh sample.
+if (args.ids) {
+  const wanted = new Set(args.ids)
+  pending = pending.filter((i) => wanted.has(i.question_id))
 }
 pending = pending.filter((i) => !done.has(i.question_id))
 
