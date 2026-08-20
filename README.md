@@ -54,6 +54,15 @@ graph is not the bottleneck; the 25,112 extraction calls are.
 | single-session-assistant | 3/14 | 21.4% (was 1/14 — see `completion.md`) |
 | **overall** | **56/116** | **48.3%** |
 
+Every row above recomputes from `results/oracle-sample-final.jsonl`, committed next to this
+README — 116 records carrying the question, gold answer, the answer this system gave, the
+judge's verdict, the retrieval path taken and per-question latency. The prior run is kept as
+`results/oracle-sample-judged.jsonl` (52/116, 44.8%) so the delta is auditable, not asserted:
+
+```
+jq -s '{n: length, correct: map(select(.correct)) | length}' results/oracle-sample-final.jsonl
+```
+
 Read that as what it is: the *oracle* split (evidence sessions only, easier than S), a
 4B model on a laptop, 116 instances. Zep's 71.2%, full-context GPT-4's 60.2% and mem0's
 29.07% are overall numbers on the harder S split with frontier models — a different

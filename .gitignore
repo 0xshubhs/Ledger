@@ -41,6 +41,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# eval datasets and run outputs (large, not vendored)
+# eval datasets (large, not vendored)
 /data
-/results
+
+# run outputs: scratch is ignored, graded runs are committed as evidence
+/results/*
+!/results/oracle-sample-judged.jsonl
+!/results/oracle-sample-final.jsonl
+!/results/fix-check-judged.jsonl
