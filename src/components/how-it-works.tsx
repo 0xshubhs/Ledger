@@ -8,7 +8,7 @@ const STEPS = [
   {
     num: "01",
     title: "Connect & Deposit",
-    desc: "Install the SDK in one line. Pass your API key. Every agent call automatically routes through the track3 memory layer — zero config required.",
+    desc: "Install the SDK in one line. Pass your API key. Every agent call automatically routes through the Ledger memory layer — zero config required.",
     blue: true,
   },
   {

@@ -47,7 +47,7 @@ export function Footer() {
           <div className="flex flex-col gap-4 max-w-xs">
             <div className="flex items-center gap-2.5">
               <Brain size={18} strokeWidth={2} className="text-[#0001FC]" />
-              <span className="text-sm font-mono tracking-[0.25em] uppercase font-black text-white">track3</span>
+              <span className="text-sm font-mono tracking-[0.25em] uppercase font-black text-white">Ledger</span>
             </div>
             <p className="text-xs font-mono text-white/50 leading-relaxed">
               The memory layer AI agents actually deserve.

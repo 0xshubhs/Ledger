@@ -32,7 +32,7 @@ export function Navbar() {
               className="flex items-center gap-2.5"
             >
               <Brain size={17} strokeWidth={2} className="text-[#0001FC]" />
-              <span className="text-xs font-mono tracking-[0.3em] uppercase font-black">track3</span>
+              <span className="text-xs font-mono tracking-[0.3em] uppercase font-black">Ledger</span>
             </motion.div>
           </Link>
 

@@ -1,4 +1,4 @@
-# Completion — track3 (agent memory)
+# Completion — Ledger (agent memory)
 
 Tracks what's actually built vs. what plan.md describes. Updated as work lands.
 
@@ -123,7 +123,7 @@ All of the following was executed, not inferred from documentation:
 ## Done
 
 - [x] Landing page (navbar, hero, marquee, bento grid, feature cards, how-it-works,
-      benchmarks, pricing, CTA, footer) — branded "track3", blue accent
+      benchmarks, pricing, CTA, footer) — branded "Ledger", blue accent
 - [x] **Live memory console** wired to the real API — ingest 3 sessions where one
       contradicts another, then probe current truth / full history / other session /
       never-stated, with the source turn quoted and superseded facts visibly greyed

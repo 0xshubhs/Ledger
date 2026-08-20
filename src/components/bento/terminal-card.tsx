@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 
 const LOG_LINES = [
-  "> Initializing track3 agent runtime...",
+  "> Initializing Ledger agent runtime...",
   "> Loading memory graph index...",
   "> Entity resolution: enabled",
   "> Temporal versioning: git-style",

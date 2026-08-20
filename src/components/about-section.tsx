@@ -38,27 +38,27 @@ const STATS = [
   { label: "Vector Calls",         value: "0",       sub: "graph-native retrieval", highlight: false },
 ]
 
-// track3's row is a *partial* run and is labelled as one: 16 knowledge-update
+// Ledger's row is a *partial* run and is labelled as one: 16 knowledge-update
 // instances of the oracle split, scored locally. The other rows are overall
 // LongMemEval-S figures as their authors report them, on all six question types
 // and a harder split. They are not the same measurement and the chart says so —
 // a partial number dressed as a total would make every other number here
 // worthless.
 const BENCHMARK_ROWS = [
-  { name: "track3 (oracle)",   score: 48.30, display: "48.3% overall — 116 instances, oracle split, 4B local", leader: true },
+  { name: "Ledger (oracle)",   score: 48.30, display: "48.3% overall — 116 instances, oracle split, 4B local", leader: true },
   { name: "Zep",               score: 71.20, display: "71.20% overall (reported, S)", leader: false },
   { name: "Full Context GPT-4",score: 60.20, display: "60.20% overall (reported, S)", leader: false },
   { name: "mem0 OSS",          score: 29.07, display: "29.07% overall (reported, S)", leader: false },
 ]
 
-// Capability comparison, not a score comparison. Every track3 cell here is a
+// Capability comparison, not a score comparison. Every Ledger cell here is a
 // property of the data model that can be checked in the code.
 const CATEGORY_ROWS = [
-  { category: "Overwritten facts retained",  track3: "Yes, SUPERSEDES", zep: "Partial", mem0: "No" },
-  { category: "Abstention when absent",      track3: "Yes, by construction", zep: "Heuristic", mem0: "No" },
-  { category: "Answer cites source turn",    track3: "Yes, ASSERTS edge", zep: "Partial", mem0: "No" },
-  { category: "Retrieval is a traversal",    track3: "Yes, algo.SSpaths", zep: "Hybrid", mem0: "Vector only" },
-  { category: "Embedding model required",    track3: "None", zep: "Yes", mem0: "Yes" },
+  { category: "Overwritten facts retained",  ledger: "Yes, SUPERSEDES", zep: "Partial", mem0: "No" },
+  { category: "Abstention when absent",      ledger: "Yes, by construction", zep: "Heuristic", mem0: "No" },
+  { category: "Answer cites source turn",    ledger: "Yes, ASSERTS edge", zep: "Partial", mem0: "No" },
+  { category: "Retrieval is a traversal",    ledger: "Yes, algo.SSpaths", zep: "Hybrid", mem0: "Vector only" },
+  { category: "Embedding model required",    ledger: "None", zep: "Yes", mem0: "Yes" },
 ]
 
 export function AboutSection() {
@@ -200,7 +200,7 @@ export function AboutSection() {
           {/* Column headers */}
           <div className="grid grid-cols-4 px-6 py-2.5 border-b border-border bg-muted/40">
             <span className="col-span-2 text-[9px] tracking-widest uppercase text-muted-foreground font-mono">Category</span>
-            <span className="text-[9px] tracking-widest uppercase text-[#0001FC] font-mono text-center font-bold">track3</span>
+            <span className="text-[9px] tracking-widest uppercase text-[#0001FC] font-mono text-center font-bold">Ledger</span>
             <span className="text-[9px] tracking-widest uppercase text-muted-foreground font-mono text-right">mem0</span>
           </div>
 
@@ -219,7 +219,7 @@ export function AboutSection() {
                 </span>
                 <div className="flex flex-col items-center gap-0.5">
                   <span className="text-sm font-mono font-black text-[#0001FC] tabular-nums">
-                    {row.track3}
+                    {row.ledger}
                   </span>
                 </div>
                 <div className="flex flex-col items-end gap-0.5">
@@ -242,7 +242,7 @@ export function AboutSection() {
         transition={{ delay: 0.6, duration: 0.5 }}
         className="mt-3 text-[10px] font-mono text-muted-foreground text-right"
       >
-        track3: 116 instances of the oracle split across all six question types, qwen3.5:4b
+        ledger: 116 instances of the oracle split across all six question types, qwen3.5:4b
         local, judged by qwen2.5:7b · others: overall LongMemEval-S as reported by their authors,
         on a harder split with frontier models · reproduce with scripts/run-eval.mjs
       </motion.p>

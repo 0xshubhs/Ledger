@@ -8,7 +8,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "track3 | Memory Layer for AI Agents",
+  title: "Ledger | Memory Layer for AI Agents",
   description:
     "Persistent, graph-native memory infrastructure for AI agents. Emotional awareness, adaptive retrieval, and temporal versioning in one unified API.",
   keywords: [
@@ -21,8 +21,8 @@ export const metadata: Metadata = {
     "AI agents",
     "memory layer",
   ],
-  authors: [{ name: "track3" }],
-  creator: "track3",
+  authors: [{ name: "Ledger" }],
+  creator: "Ledger",
 }
 
 export const viewport: Viewport = {

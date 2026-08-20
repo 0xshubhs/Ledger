@@ -11,7 +11,7 @@ const PLANS = [
     name: "FREE",
     price: "$0",
     period: "/month",
-    description: "For developers exploring track3",
+    description: "For developers exploring Ledger",
     features: [
       "Unlimited API calls",
       "Up to 10k memories",

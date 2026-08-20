@@ -1,4 +1,4 @@
-# track3 — Agent Memory on a Temporal Fact Graph
+# Ledger — Agent Memory on a Temporal Fact Graph
 
 **Hack Hydra** · Track 3, Memory and Context Retrieval · Aug 12–20, 2026 · Built on
 [HydraDB](https://github.com/hydra-db/hydradb)
