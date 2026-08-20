@@ -7,6 +7,25 @@ An agent memory layer for cross-session continuity, built as a **fact graph with
 provenance edges** rather than a vector store. No embedding model is used anywhere in this
 project — that is the submission's central claim, not an omission.
 
+| | |
+|---|---|
+| **LongMemEval** | **48.3%** overall (56/116, oracle split) · **75.0%** on knowledge-update |
+| **Current-truth lookup** | **2–3ms** · supersede write 48ms · ingest ~400 msg/sec |
+| **Embedding models used** | **zero** · no API key required, runs on a 6GB laptop GPU |
+| **Graded rows in this repo** | **116**, one JSON object each — the number is checkable, not asserted |
+
+Answered by `qwen3.5:4b`, graded by a *different* model (`qwen2.5:7b`), so the system does
+not mark its own homework. Scope stated plainly rather than rounded off: this is the oracle
+split answered by a 4B local model — see [Running LongMemEval](#running-longmemeval).
+
+**Verify the headline claim in one minute**, no eval run needed: start the node, open the
+console, and click through `ingest 3 sessions → current truth → full history → never
+stated`. Session 5 contradicts session 0; the old fact is still there with its interval
+closed, and the last probe abstains. Setup is three commands below.
+
+Sibling submission: **[Downstream](https://github.com/ayushsingh82/Downstream)** — Track 2A,
+supply-chain blast radius on the same database.
+
 ## The bet
 
 mem0-style memory retrieves by vector similarity, which is a weak proxy for two questions
