@@ -41,7 +41,7 @@ LongMemEval-S haystack — 66 sessions, 564 turns, ~121K tokens — ingests in *
 ~400 messages/sec**. The full 25,112-session run is ~9 minutes of graph writes, so the
 graph is not the bottleneck; the 25,112 extraction calls are.
 
-**LongMemEval: 52 of 116 instances correct (44.8%)** on the oracle split, everything local
+**LongMemEval: 56 of 116 instances correct (48.3%)** on the oracle split, everything local
 — `qwen3.5-16k:4b` answering, `qwen2.5:7b` judging, no API key and no vector database.
 
 | | | |
@@ -50,9 +50,9 @@ graph is not the bottleneck; the 25,112 extraction calls are.
 | knowledge-update | 24/32 | **75.0%** |
 | temporal-reasoning | 6/16 | 37.5% |
 | multi-session | 10/34 | 29.4% |
-| single-session-assistant | 1/14 | 7.1% (a bug — see `completion.md`) |
-| single-session-preference | 0/6 | 0.0% (a bug — see `completion.md`) |
-| **overall** | **52/116** | **44.8%** |
+| single-session-preference | 2/6 | 33.3% (was 0/6 — see `completion.md`) |
+| single-session-assistant | 3/14 | 21.4% (was 1/14 — see `completion.md`) |
+| **overall** | **56/116** | **48.3%** |
 
 Read that as what it is: the *oracle* split (evidence sessions only, easier than S), a
 4B model on a laptop, 116 instances. Zep's 71.2%, full-context GPT-4's 60.2% and mem0's
@@ -60,9 +60,9 @@ Read that as what it is: the *oracle* split (evidence sessions only, easier than
 measurement, not a leaderboard position.
 
 The knowledge-update column is the one this data model exists for, and it is the strongest
-answerable type. The two zeros are not model limits: in both cases the system either never
-stored the evidence or held it and abstained anyway, both traced to a single prompt line
-and both fixed after the run.
+answerable type. The two former zeros were not model limits: in both cases the system either never stored
+the evidence or held it and abstained anyway. Both traced to a single prompt line, both
+were fixed, and re-measuring the same 20 instances by id took them from 1/20 to 5/20.
 
 ## Graph model
 

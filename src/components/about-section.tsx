@@ -45,7 +45,7 @@ const STATS = [
 // a partial number dressed as a total would make every other number here
 // worthless.
 const BENCHMARK_ROWS = [
-  { name: "track3 (oracle)",   score: 44.80, display: "44.8% overall — 116 instances, oracle split, 4B local", leader: true },
+  { name: "track3 (oracle)",   score: 48.30, display: "48.3% overall — 116 instances, oracle split, 4B local", leader: true },
   { name: "Zep",               score: 71.20, display: "71.20% overall (reported, S)", leader: false },
   { name: "Full Context GPT-4",score: 60.20, display: "60.20% overall (reported, S)", leader: false },
   { name: "mem0 OSS",          score: 29.07, display: "29.07% overall (reported, S)", leader: false },

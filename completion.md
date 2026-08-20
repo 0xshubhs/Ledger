@@ -9,7 +9,7 @@ rather than merely parsed.** A partial run exists — see *Benchmark* below — 
 
 ## Benchmark
 
-**LongMemEval oracle split · 116 instances · 52 correct (44.8%)** — everything local:
+**LongMemEval oracle split · 116 instances · 56 correct (48.3%)** — everything local:
 `qwen3.5-16k:4b` answering, `qwen2.5:7b` judging. A different model grades than the one
 under test, so the system is not marking its own homework. Graded by normalised string
 match first, LLM judge only where that was inconclusive, which is LongMemEval's own metric.
@@ -19,10 +19,10 @@ match first, LLM judge only where that was inconclusive, which is LongMemEval's 
 | single-session-user | 11/14 | **78.6%** | |
 | knowledge-update | 24/32 | **75.0%** | the type this data model exists for |
 | temporal-reasoning | 6/16 | 37.5% | |
+| single-session-preference | 2/6 | 33.3% | was 0/6 before the fix below |
 | multi-session | 10/34 | 29.4% | weakest answerable type; needs facts from several sessions at once |
-| single-session-assistant | 1/14 | 7.1% | **a bug, not a limit** — see below |
-| single-session-preference | 0/6 | 0.0% | **a bug, not a limit** — see below |
-| **overall** | **52/116** | **44.8%** | |
+| single-session-assistant | 3/14 | 21.4% | was 1/14 before the fix below |
+| **overall** | **56/116** | **48.3%** | was 52/116 (44.8%) |
 
 Scope, stated rather than rounded off: 116 of a 100-instance stratified sample plus 16
 earlier rows, on the *oracle* split (evidence sessions only, easier than S), answered by a
@@ -45,9 +45,20 @@ not a model that could not reason:
   the memory to shape a recommendation, and gold is "the user would prefer stand-up
   comedy". The answer prompt now says so.
 
-Both fixes landed after this run; `results/fix-check.jsonl` re-measures those exact
-instances by id (`run-eval.mjs --ids`) so the change is a like-for-like comparison rather
-than a fresh sample.
+Both were fixed and the same 20 instances re-measured by id (`run-eval.mjs --ids`), so this
+is a like-for-like comparison rather than a fresh sample:
+
+| | before | after |
+|---|---|---|
+| single-session-assistant | 1/14 (7.1%) | **3/14 (21.4%)** |
+| single-session-preference | 0/6 (0%) | **2/6 (33.3%)** |
+| the two families together | 1/20 (5%) | **5/20 (25%)** |
+| overall | 52/116 (44.8%) | **56/116 (48.3%)** |
+
+Both families are still weak — a 4B model asked what it recommended three sessions ago is
+working at the edge of what it can do — but they are no longer zero for a structural
+reason, which is the difference between a limitation and a bug. `results/fix-check.jsonl`
+holds the re-run and `results/oracle-sample-final.jsonl` the merged set.
 
 **What the misses look like elsewhere.** On the 16 instances inspected by hand, session
 recall was 16/16 — every answer drew on a session the gold labels call evidence. The
