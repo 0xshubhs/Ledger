@@ -46,7 +46,12 @@ export async function POST(req: NextRequest) {
   // Retrieval is a graph lookup, not a similarity search: narrowest tier first,
   // widening to the user's working set rather than guessing again. See
   // retrieveFacts in memory.ts for why the last tier exists.
-  const { facts, path: retrievalPath } = await retrieveFacts(body.userExternalId, plan)
+  // A natural-language question was planned into a predicate guess, so retrieval
+  // widens when the guess misses. A caller that named subject and predicate
+  // itself gets the narrow answer, including the empty one.
+  const { facts, path: retrievalPath } = await retrieveFacts(body.userExternalId, plan, {
+    widen: Boolean(body.question),
+  })
 
   const retrieveMs = Date.now() - startedAt
 

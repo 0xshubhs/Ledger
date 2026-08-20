@@ -347,9 +347,16 @@ export interface RetrievalResult {
 export async function retrieveFacts(
   userExternalId: string,
   plan: RetrievalPlan,
-  options: { workingSetLimit?: number } = {}
+  options: { workingSetLimit?: number; widen?: boolean } = {}
 ): Promise<RetrievalResult> {
   const limit = options.workingSetLimit ?? 200
+  // Widening is right when the predicate was *guessed* — a planner asking for
+  // `daily_commute_length` against a store holding `commute_duration` should not
+  // report "not in memory". It is wrong when the caller named the predicate
+  // itself: a direct lookup for a relation this user has never had is exactly
+  // the case abstention exists for, and answering it with 200 unrelated facts
+  // would turn a structural "no" into a vector store's "here is something".
+  const widen = options.widen ?? true
   const facts: FactRow[] = []
   const seen = new Set<number>()
   let path: RetrievalPath = "none"
@@ -388,7 +395,7 @@ export async function retrieveFacts(
   // against. Measured on temporal-reasoning, every early-returned entity hit
   // retrieved 2-5 facts and then abstained. Ordering keeps the targeted rows
   // first, so `path` still reports how the question was actually matched.
-  add(await getAllCurrentFacts(userExternalId, limit), "working-set")
+  if (widen) add(await getAllCurrentFacts(userExternalId, limit), "working-set")
 
   return { facts: facts.slice(0, limit), path }
 }
